@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# ESP-IDF
+firmware/esp32-csi-node/build/
+firmware/esp32-csi-node/sdkconfig
+firmware/esp32-csi-node/sdkconfig.old
+
+# Data and Models
+data/*.csv
+data/*.bin
+models/*.pth
+models/*.pt
+!models/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+
+# Upstream reference
+_upstream/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
