@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WiFi Body - Pose Monitor</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1>WiFi Body</h1>
+            <div id="status-bar">
+                <span id="connection-status" class="status-dot offline">Offline</span>
+                <span id="fps-counter">0 FPS</span>
+                <span id="node-count">0 nodes</span>
+            </div>
+        </header>
+        <main>
+            <section id="viewer-section">
+                <canvas id="skeleton-canvas"></canvas>
+            </section>
+            <aside id="info-panel">
+                <div id="activity-card" class="card">
+                    <h3>Activity</h3>
+                    <p id="activity-type">--</p>
+                </div>
+                <div id="alert-card" class="card">
+                    <h3>Fall Alert</h3>
+                    <p id="fall-status">Normal</p>
+                </div>
+                <div id="nodes-card" class="card">
+                    <h3>Nodes</h3>
+                    <ul id="node-list"></ul>
+                </div>
+            </aside>
+        </main>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="skeleton3d.js"></script>
+</body>
+</html>

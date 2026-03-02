@@ -1,0 +1,71 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #0f0f1a;
+    color: #e0e0e0;
+    height: 100vh;
+    overflow: hidden;
+}
+
+#app { display: flex; flex-direction: column; height: 100vh; }
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 24px;
+    background: #16162a;
+    border-bottom: 1px solid #2a2a4a;
+}
+
+header h1 { font-size: 20px; color: #00ff88; }
+
+#status-bar { display: flex; gap: 16px; font-size: 13px; }
+
+.status-dot::before {
+    content: "";
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+}
+.status-dot.online::before { background: #00ff88; }
+.status-dot.offline::before { background: #ff4444; }
+
+main { display: flex; flex: 1; overflow: hidden; }
+
+#viewer-section { flex: 1; position: relative; }
+
+#skeleton-canvas { width: 100%; height: 100%; display: block; }
+
+#info-panel {
+    width: 280px;
+    padding: 16px;
+    background: #16162a;
+    border-left: 1px solid #2a2a4a;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow-y: auto;
+}
+
+.card { background: #1e1e38; border-radius: 8px; padding: 16px; }
+
+.card h3 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #888;
+    margin-bottom: 8px;
+}
+
+.card p { font-size: 24px; font-weight: 600; }
+
+.alert-danger { color: #ff4444; animation: pulse 1s infinite; }
+
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+#node-list { list-style: none; font-size: 13px; }
+
+#node-list li { padding: 4px 0; border-bottom: 1px solid #2a2a4a; }
