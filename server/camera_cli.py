@@ -207,18 +207,15 @@ def main(argv: list[str] | None = None) -> None:
                 vis = draw_status_overlay(
                     frame, recording, activity, frame_count, max_frames
                 )
-                # Draw skeleton if joints detected
-                if joints is not None:
-                    # Re-run detection for overlay (use raw keypoints)
-                    keypoints, scores = collector.body(frame)
-                    if keypoints is not None and len(keypoints) > 0:
-                        kp = keypoints[0].astype(int)
-                        for i, j in SKELETON_CONNECTIONS:
-                            pt1 = tuple(kp[i])
-                            pt2 = tuple(kp[j])
-                            cv2.line(vis, pt1, pt2, (0, 255, 0), 2)
-                        for pt in kp:
-                            cv2.circle(vis, tuple(pt), 4, (0, 0, 255), -1)
+                # Draw skeleton using cached raw keypoints (no re-detection)
+                if joints is not None and collector.last_raw_keypoints is not None:
+                    kp = collector.last_raw_keypoints.astype(int)
+                    for i, j in SKELETON_CONNECTIONS:
+                        pt1 = tuple(kp[i])
+                        pt2 = tuple(kp[j])
+                        cv2.line(vis, pt1, pt2, (0, 255, 0), 2)
+                    for pt in kp:
+                        cv2.circle(vis, tuple(pt), 4, (0, 0, 255), -1)
 
                 cv2.imshow("WiFi Body - Camera Collector", vis)
                 key = cv2.waitKey(1) & 0xFF

@@ -304,6 +304,9 @@ class CameraCollector:
         self._joint_buffer: List[np.ndarray] = []
         self._csi_buffer: List[np.ndarray] = []
 
+        # Cache last raw 2D keypoints for preview drawing (avoids re-running detection)
+        self.last_raw_keypoints: np.ndarray | None = None
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -334,11 +337,15 @@ class CameraCollector:
         keypoints, scores = self.body(frame)
 
         if keypoints is None or len(keypoints) == 0:
+            self.last_raw_keypoints = None
             return frame, None, None
 
         # Take the first (most confident) person
         kp = keypoints[0]  # (17, 2)
         sc = scores[0]  # (17,)
+
+        # Cache raw 2D keypoints for preview drawing
+        self.last_raw_keypoints = kp.copy()
 
         # Check if we have enough confident keypoints for a valid pose
         valid_count = np.sum(sc >= MIN_CONFIDENCE)
