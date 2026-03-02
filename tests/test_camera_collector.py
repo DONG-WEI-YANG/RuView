@@ -128,14 +128,14 @@ class TestCoco17To24JointMapping:
 
     def test_output_shape(self):
         kp, sc = _make_fake_keypoints()
-        joints = coco17_to_24joint(kp[0], sc[0], standing_height=1.70, image_height=480)
+        joints = coco17_to_24joint(kp[0], standing_height=1.70)
         assert joints.shape == (24, 3), f"Expected (24, 3), got {joints.shape}"
         assert joints.dtype == np.float32
 
     def test_reasonable_values(self):
         """Converted joints should be within physically plausible ranges."""
         kp, sc = _make_fake_keypoints()
-        joints = coco17_to_24joint(kp[0], sc[0], standing_height=1.70, image_height=480)
+        joints = coco17_to_24joint(kp[0], standing_height=1.70)
 
         # All X coords should be within a few metres of origin
         assert np.all(np.abs(joints[:, 0]) < 3.0), "X coords out of range"
@@ -146,13 +146,13 @@ class TestCoco17To24JointMapping:
 
     def test_no_nans(self):
         kp, sc = _make_fake_keypoints()
-        joints = coco17_to_24joint(kp[0], sc[0], standing_height=1.70, image_height=480)
+        joints = coco17_to_24joint(kp[0], standing_height=1.70)
         assert np.all(np.isfinite(joints)), "Output contains NaN or Inf"
 
     def test_head_above_spine(self):
         """Head (joint 0) should have higher Y than spine (joint 3)."""
         kp, sc = _make_fake_keypoints()
-        joints = coco17_to_24joint(kp[0], sc[0], standing_height=1.70, image_height=480)
+        joints = coco17_to_24joint(kp[0], standing_height=1.70)
         # Y-up: head.y > spine.y
         assert joints[0, 1] > joints[3, 1], (
             f"Head Y ({joints[0, 1]:.3f}) should be above spine Y ({joints[3, 1]:.3f})"
@@ -161,7 +161,7 @@ class TestCoco17To24JointMapping:
     def test_left_right_symmetry(self):
         """Left and right joints should be roughly symmetric about X=0."""
         kp, sc = _make_fake_keypoints()
-        joints = coco17_to_24joint(kp[0], sc[0], standing_height=1.70, image_height=480)
+        joints = coco17_to_24joint(kp[0], standing_height=1.70)
         # l_shoulder (4) and r_shoulder (7) should have opposite X signs
         assert joints[4, 0] * joints[7, 0] <= 0 or abs(joints[4, 0] - joints[7, 0]) < 0.05, (
             "Shoulders should be on opposite sides of X=0"
@@ -178,7 +178,7 @@ class TestPixelToMeterConversion:
     def test_scale_factor(self):
         """A person 400px tall with 1.70m height gives scale ~0.00425 m/px."""
         kp, sc = _make_fake_keypoints()
-        joints = coco17_to_24joint(kp[0], sc[0], standing_height=1.70, image_height=480)
+        joints = coco17_to_24joint(kp[0], standing_height=1.70)
         # The head-to-ankle distance in output should approximate standing height
         # Head (joint 0) to average ankle (joints 12, 15) in Y
         head_y = joints[0, 1]
@@ -193,8 +193,8 @@ class TestPixelToMeterConversion:
     def test_different_height(self):
         """Changing standing_height scales output proportionally."""
         kp, sc = _make_fake_keypoints()
-        joints_170 = coco17_to_24joint(kp[0], sc[0], standing_height=1.70, image_height=480)
-        joints_180 = coco17_to_24joint(kp[0], sc[0], standing_height=1.80, image_height=480)
+        joints_170 = coco17_to_24joint(kp[0], standing_height=1.70)
+        joints_180 = coco17_to_24joint(kp[0], standing_height=1.80)
 
         # All positions should scale up by 1.80/1.70
         ratio = 1.80 / 1.70
@@ -207,7 +207,7 @@ class TestPixelToMeterConversion:
     def test_origin_at_mid_hip(self):
         """Mid-hip should be approximately at the origin (0, 0)."""
         kp, sc = _make_fake_keypoints()
-        joints = coco17_to_24joint(kp[0], sc[0], standing_height=1.70, image_height=480)
+        joints = coco17_to_24joint(kp[0], standing_height=1.70)
         # Mid-hip = average of l_hip (10) and r_hip (13)
         mid_hip = (joints[10] + joints[13]) / 2.0
         assert np.abs(mid_hip[0]) < 0.05, f"Mid-hip X should be near 0, got {mid_hip[0]:.4f}"
@@ -458,7 +458,7 @@ class TestConfidenceFiltering:
         sc[0, COCO_LEFT_EYE] = 0.10
 
         # coco17_to_24joint should still work with these inputs
-        joints = coco17_to_24joint(kp[0], sc[0], standing_height=1.70, image_height=480)
+        joints = coco17_to_24joint(kp[0], standing_height=1.70)
         assert joints.shape == (24, 3)
         assert np.all(np.isfinite(joints))
 

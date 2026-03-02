@@ -124,7 +124,7 @@ class SyntheticDataGenerator:
             )
 
         joints = self._generate_motion(activity, n_frames)          # (F, 24, 3)
-        csi = self._simulate_csi(joints, n_nodes, n_sub)            # (F, N, S)
+        csi = self.simulate_csi(joints, n_nodes, n_sub)              # (F, N, S)
         labels = np.array([activity] * n_frames)
 
         return {
@@ -348,7 +348,7 @@ class SyntheticDataGenerator:
     # CSI simulation (private)
     # ------------------------------------------------------------------
 
-    def _simulate_csi(
+    def simulate_csi(
         self,
         joints: np.ndarray,
         n_nodes: int,

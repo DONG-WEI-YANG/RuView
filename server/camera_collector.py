@@ -62,9 +62,7 @@ SKELETON_CONNECTIONS = [
 
 def coco17_to_24joint(
     keypoints_2d: np.ndarray,
-    scores: np.ndarray,
     standing_height: float,
-    image_height: int,
 ) -> np.ndarray:
     """Convert COCO 17-keypoint 2D detections to the project's 24-joint 3D format.
 
@@ -72,12 +70,8 @@ def coco17_to_24joint(
     ----------
     keypoints_2d : (17, 2)
         Pixel coordinates (x, y) for each COCO keypoint.
-    scores : (17,)
-        Confidence scores for each keypoint.
     standing_height : float
         Real-world standing height in meters for pixel-to-meter conversion.
-    image_height : int
-        Height of the source image in pixels (used for Y-axis flip).
 
     Returns
     -------
@@ -363,8 +357,7 @@ class CameraCollector:
                     weights = weights / weights.sum()
                     kp[i] = np.average(kp[high_conf], weights=weights, axis=0)
 
-        h = frame.shape[0]
-        joints_24 = coco17_to_24joint(kp, sc, self.standing_height, h)
+        joints_24 = coco17_to_24joint(kp, self.standing_height)
 
         # If recording, append to buffer
         if self._recording and len(self._joint_buffer) < self._max_frames:
@@ -462,39 +455,6 @@ class CameraCollector:
             self.cap.release()
 
     # ------------------------------------------------------------------
-    # Preview / drawing helpers (used by camera_cli.py)
-    # ------------------------------------------------------------------
-
-    def draw_skeleton(
-        self,
-        image: np.ndarray,
-        keypoints_2d: np.ndarray | None = None,
-    ) -> np.ndarray:
-        """Draw detected skeleton on the image for preview.
-
-        If *keypoints_2d* is not provided, returns the image unchanged.
-        Expects raw COCO 17-format pixel keypoints from the last
-        ``body()`` call.
-        """
-        if keypoints_2d is None:
-            return image
-
-        vis = image.copy()
-        kp = keypoints_2d.astype(int)
-
-        # Draw connections
-        for i, j in SKELETON_CONNECTIONS:
-            pt1 = tuple(kp[i])
-            pt2 = tuple(kp[j])
-            cv2.line(vis, pt1, pt2, (0, 255, 0), 2)
-
-        # Draw keypoints
-        for pt in kp:
-            cv2.circle(vis, tuple(pt), 4, (0, 0, 255), -1)
-
-        return vis
-
-    # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
 
@@ -515,5 +475,5 @@ class CameraCollector:
         """
         # Wrap single frame: (1, 24, 3)
         joints_seq = joints_24[np.newaxis, :, :]
-        csi_seq = self._csi_gen._simulate_csi(joints_seq, n_nodes, n_sub)  # (1, N, S)
+        csi_seq = self._csi_gen.simulate_csi(joints_seq, n_nodes, n_sub)  # (1, N, S)
         return csi_seq[0]

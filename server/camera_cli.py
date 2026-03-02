@@ -127,33 +127,6 @@ def draw_status_overlay(
     return vis
 
 
-def draw_skeleton_on_frame(
-    image: np.ndarray,
-    body_model,
-    frame: np.ndarray,
-) -> np.ndarray:
-    """Run body detection and draw skeleton overlay."""
-    keypoints, scores = body_model(frame)
-
-    vis = image.copy()
-    if keypoints is None or len(keypoints) == 0:
-        return vis
-
-    kp = keypoints[0].astype(int)  # first person, (17, 2)
-
-    # Draw connections
-    for i, j in SKELETON_CONNECTIONS:
-        pt1 = tuple(kp[i])
-        pt2 = tuple(kp[j])
-        cv2.line(vis, pt1, pt2, (0, 255, 0), 2)
-
-    # Draw keypoints
-    for pt in kp:
-        cv2.circle(vis, tuple(pt), 4, (0, 0, 255), -1)
-
-    return vis
-
-
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     show_preview = args.preview and not args.no_preview
