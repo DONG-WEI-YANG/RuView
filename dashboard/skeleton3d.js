@@ -30,7 +30,10 @@
 
     var renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
     renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+    // Use parent container dimensions (canvas may be 0x0 before layout)
+    var initW = canvas.parentElement.clientWidth || canvas.clientWidth || 800;
+    var initH = canvas.parentElement.clientHeight || canvas.clientHeight || 600;
+    renderer.setSize(initW, initH);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
@@ -214,8 +217,26 @@
 
     // ─── Animation loop ──────────────────────────────────────
     var lastFrameTime = 0, frameCount = 0;
+    var lastCanvasW = 0, lastCanvasH = 0;
     function animate(time) {
         requestAnimationFrame(animate);
+
+        // Auto-resize: check parent dimensions each frame
+        var parent = canvas.parentElement;
+        if (parent) {
+            var pw = parent.clientWidth, ph = parent.clientHeight;
+            if (pw === 0 || ph === 0) {
+                // Tab hidden — reset tracking so we resize when visible again
+                lastCanvasW = 0; lastCanvasH = 0;
+            } else if (pw !== lastCanvasW || ph !== lastCanvasH) {
+                lastCanvasW = pw;
+                lastCanvasH = ph;
+                camera.aspect = pw / ph;
+                camera.updateProjectionMatrix();
+                renderer.setSize(pw, ph);
+            }
+        }
+
         if (controls) controls.update();
         renderer.render(scene, camera);
         frameCount++;
@@ -229,10 +250,15 @@
 
     // ─── Resize ───────────────────────────────────────────────
     window.addEventListener("resize", function () {
-        var w = canvas.clientWidth, h = canvas.clientHeight;
-        camera.aspect = w / h;
-        camera.updateProjectionMatrix();
-        renderer.setSize(w, h);
+        // Use parent dimensions — canvas inline style from setSize() may be stale
+        var parent = canvas.parentElement;
+        var w = parent ? parent.clientWidth : canvas.clientWidth;
+        var h = parent ? parent.clientHeight : canvas.clientHeight;
+        if (w > 0 && h > 0) {
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+            renderer.setSize(w, h);
+        }
     });
 
     // ─── WebSocket ────────────────────────────────────────────

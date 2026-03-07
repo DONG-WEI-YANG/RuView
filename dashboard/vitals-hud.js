@@ -288,6 +288,193 @@
         return "rgba(" + r + "," + g + "," + b + "," + a.toFixed(2) + ")";
     }
 
+    // ═══ Render: Live Demo Tab — Signal Canvas ════════════════
+    var signalScrollOffset = 0;
+    function renderSignalCanvas() {
+        var c = document.getElementById("signalCanvas");
+        if (!c) return;
+        var ctx = c.getContext("2d");
+        var w = c.width, h = c.height;
+        ctx.clearRect(0, 0, w, h);
+
+        // Background
+        ctx.fillStyle = "#0e0e22";
+        ctx.fillRect(0, 0, w, h);
+
+        // Grid
+        ctx.strokeStyle = "rgba(255,255,255,0.06)";
+        ctx.lineWidth = 0.5;
+        for (var gx = 0; gx < w; gx += 40) {
+            ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, h); ctx.stroke();
+        }
+        for (var gy = 0; gy < h; gy += 30) {
+            ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(w, gy); ctx.stroke();
+        }
+
+        signalScrollOffset += 1.5;
+
+        // Draw 6 subcarrier channels with different colors
+        var colors = ["#00cc88", "#00aaff", "#ffaa00", "#ff4466", "#aa66ff", "#66ffcc"];
+        var freqs  = [0.03, 0.05, 0.04, 0.025, 0.06, 0.035];
+        var amps   = [0.6, 0.45, 0.55, 0.35, 0.4, 0.5];
+        var phases  = [0, 1.2, 2.5, 0.8, 3.7, 1.9];
+
+        for (var ch = 0; ch < 6; ch++) {
+            var baseY = h * (0.12 + ch * 0.14);
+            ctx.strokeStyle = colors[ch];
+            ctx.lineWidth = 1.5;
+            ctx.globalAlpha = 0.85;
+            ctx.beginPath();
+            for (var x = 0; x < w; x++) {
+                var tt = (x + signalScrollOffset) * freqs[ch];
+                var val = Math.sin(tt + phases[ch]) * amps[ch]
+                        + Math.sin(tt * 2.3 + phases[ch] * 0.7) * amps[ch] * 0.3
+                        + Math.sin(tt * (breathRate / 60) * 0.15 + ch) * 0.15
+                        + (Math.random() - 0.5) * 0.08;
+                var y = baseY + val * 22;
+                if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+
+            // Channel label
+            ctx.globalAlpha = 0.5;
+            ctx.fillStyle = colors[ch];
+            ctx.font = "9px monospace";
+            ctx.fillText("CH" + (ch + 1), 4, baseY - 12);
+            ctx.globalAlpha = 1.0;
+        }
+
+        // Update metrics
+        var sigEl = document.getElementById("signalStrength");
+        var latEl = document.getElementById("latency");
+        if (sigEl) sigEl.textContent = (-42 + Math.sin(t * 0.3) * 5).toFixed(0) + " dBm";
+        if (latEl) latEl.textContent = (10 + Math.random() * 8).toFixed(0) + " ms";
+    }
+
+    // ═══ Render: Live Demo Tab — Pose Canvas ═════════════════
+    // 2D stick figure (classic pose estimation visualization)
+    var POSE_BONES_2D = [
+        [0,1],[1,2],[2,3],[3,10],  // head→spine
+        [3,4],[4,5],[5,6],          // L arm
+        [3,7],[7,8],[8,9],          // R arm
+        [10,11],[11,12],[12,13],[13,14], // L leg
+        [11,15],[15,16],[16,17],         // R leg
+    ];
+
+    function renderPoseCanvas() {
+        var c = document.getElementById("poseCanvas");
+        if (!c) return;
+        var ctx = c.getContext("2d");
+        var w = c.width, h = c.height;
+        ctx.clearRect(0, 0, w, h);
+
+        // Background
+        ctx.fillStyle = "#0e0e22";
+        ctx.fillRect(0, 0, w, h);
+
+        // Compute 2D joint positions (project REST pose with animation)
+        var pts = [];
+        var cx = w * 0.5, cy = h * 0.88;
+        var scale = h * 0.42;
+        for (var i = 0; i < 24; i++) {
+            var rx = REST[i][0], ry = REST[i][1];
+            pts.push([cx + rx * scale, cy - ry * scale]);
+        }
+
+        // Animate: arm swing, breathing, sway
+        var armSwing = Math.sin(t * 0.6) * 8;
+        var sway = Math.sin(t * 0.4) * 3;
+        var breathOffset = Math.sin(t * 0.5) * 2;
+
+        // L arm
+        pts[5][1] += armSwing;    pts[5][0] -= 8;
+        pts[6][1] += armSwing * 1.4; pts[6][0] -= 4;
+        // R arm
+        pts[8][1] -= armSwing;    pts[8][0] += 8;
+        pts[9][1] -= armSwing * 1.4; pts[9][0] += 4;
+        // Arms down (not T-pose)
+        pts[4][1] += 6;  pts[5][1] += 45; pts[6][1] += 80;
+        pts[7][1] += 6;  pts[8][1] += 45; pts[9][1] += 80;
+        pts[5][0] += 3;  pts[6][0] += 5;
+        pts[8][0] -= 3;  pts[9][0] -= 5;
+
+        // Sway all
+        for (var i = 0; i < 24; i++) {
+            pts[i][0] += sway;
+        }
+        // Breathing (chest expansion)
+        pts[2][0] += breathOffset * 0.3;
+        pts[3][0] += breathOffset * 0.2;
+
+        // Draw confidence heatmap circle behind person
+        var grad = ctx.createRadialGradient(cx + sway, cy - scale * 0.5, 10, cx + sway, cy - scale * 0.5, scale * 0.8);
+        grad.addColorStop(0, "rgba(0,204,136,0.08)");
+        grad.addColorStop(1, "rgba(0,204,136,0)");
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, w, h);
+
+        // Draw bones
+        ctx.strokeStyle = "#00cc88";
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = "round";
+        for (var bi = 0; bi < POSE_BONES_2D.length; bi++) {
+            var a = POSE_BONES_2D[bi][0], b = POSE_BONES_2D[bi][1];
+            if (a >= 24 || b >= 24) continue;
+            ctx.globalAlpha = 0.8;
+            ctx.beginPath();
+            ctx.moveTo(pts[a][0], pts[a][1]);
+            ctx.lineTo(pts[b][0], pts[b][1]);
+            ctx.stroke();
+        }
+
+        // Draw joints
+        for (var i = 0; i < 18; i++) {
+            var r = (i === 0) ? 5 : 3.5;  // head bigger
+            ctx.globalAlpha = 0.95;
+            ctx.fillStyle = "#00ff88";
+            ctx.beginPath();
+            ctx.arc(pts[i][0], pts[i][1], r, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Confidence ring
+            ctx.globalAlpha = 0.3;
+            ctx.strokeStyle = "#00ff88";
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(pts[i][0], pts[i][1], r + 3, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+        ctx.globalAlpha = 1.0;
+
+        // Joint labels for key points
+        ctx.fillStyle = "rgba(255,255,255,0.35)";
+        ctx.font = "8px monospace";
+        ctx.fillText("head", pts[0][0] + 8, pts[0][1] - 4);
+        ctx.fillText("L", pts[6][0] - 14, pts[6][1]);
+        ctx.fillText("R", pts[9][0] + 6, pts[9][1]);
+
+        // Update metrics
+        var confPct = (85 + Math.sin(t * 0.2) * 8).toFixed(1);
+        var personEl = document.getElementById("personCount");
+        var confEl = document.getElementById("confidence");
+        var kpEl = document.getElementById("keypoints");
+        if (personEl) personEl.textContent = "1";
+        if (confEl) confEl.textContent = confPct + "%";
+        if (kpEl) kpEl.textContent = "24/24";
+    }
+
+    // REST pose reference for 2D drawing (reuse from smpl-mesh.js)
+    var REST = [
+        [0.000,1.700],[0.000,1.550],[0.000,1.380],[0.000,1.120],
+        [-0.200,1.400],[-0.480,1.400],[-0.700,1.400],
+        [0.200,1.400],[0.480,1.400],[0.700,1.400],
+        [0.000,0.950],[0.000,0.900],
+        [-0.100,0.880],[-0.100,0.500],[-0.100,0.080],
+        [0.100,0.880],[0.100,0.500],[0.100,0.080],
+        [-0.100,0.030],[0.100,0.030],[-0.780,1.400],[0.780,1.400],
+        [-0.030,1.720],[0.030,1.720],
+    ];
+
     // ═══ Keyboard Shortcuts ═══════════════════════════════════
     document.addEventListener("keydown", function (e) {
         var key = e.key.toLowerCase();
@@ -351,7 +538,7 @@
 
         renderHUD();
 
-        // Render waterfall/heatmap only when their tabs are visible
+        // Render canvases only when their tabs are visible
         var sensingTab = document.getElementById("tab-sensing");
         if (sensingTab && sensingTab.classList.contains("active")) {
             renderWaterfall();
@@ -359,6 +546,11 @@
         var dashTab = document.getElementById("tab-dashboard");
         if (dashTab && dashTab.classList.contains("active")) {
             renderHeatmap();
+        }
+        var demoTab = document.getElementById("tab-demo");
+        if (demoTab && demoTab.classList.contains("active")) {
+            renderSignalCanvas();
+            renderPoseCanvas();
         }
     }
 

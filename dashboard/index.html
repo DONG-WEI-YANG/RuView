@@ -473,8 +473,10 @@
                 panels.forEach(function (p) { p.classList.remove("active"); });
                 tab.classList.add("active");
                 document.getElementById("tab-" + target).classList.add("active");
-                // Trigger resize so Three.js canvas adapts
-                window.dispatchEvent(new Event("resize"));
+                // Trigger resize after layout reflow so Three.js canvas adapts
+                requestAnimationFrame(function () {
+                    window.dispatchEvent(new Event("resize"));
+                });
             });
         });
 
