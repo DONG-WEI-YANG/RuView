@@ -299,6 +299,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--seed", type=int, default=42)
 
+    # Hardware profile
+    parser.add_argument(
+        "--profile",
+        type=str,
+        default=None,
+        help="Hardware profile ID — sets output path and CSI params automatically",
+    )
+
     # Early stopping
     parser.add_argument(
         "--patience",
@@ -319,6 +327,21 @@ def main(argv: list[str] | None = None) -> None:
 
     args = parse_args(argv)
     settings = Settings()
+
+    # Apply hardware profile if specified
+    if args.profile:
+        from server.config import HARDWARE_PROFILES
+        if args.profile not in HARDWARE_PROFILES:
+            logger.error("Unknown profile '%s'. Available: %s",
+                         args.profile, ", ".join(HARDWARE_PROFILES.keys()))
+            raise SystemExit(1)
+        settings.hardware_profile = args.profile
+        profile = settings.apply_hardware_profile()
+        args.output_dir = str(Path(profile.model_path).parent)
+        args.n_nodes = profile.max_nodes
+        logger.info("Using hardware profile: %s (%s)", profile.id, profile.name)
+        logger.info("  Subcarriers: %d, Nodes: %d, Output: %s",
+                     profile.num_subcarriers, profile.max_nodes, args.output_dir)
 
     # ------------------------------------------------------------------
     # 1. Determine data directory

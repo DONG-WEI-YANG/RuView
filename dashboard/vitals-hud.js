@@ -25,6 +25,15 @@
     var hudVisible = true;
     var t = 0;
 
+    // Extended health metrics (Wi-Mesh inspired)
+    var hrvRmssd = 42.0;
+    var hrvSdnn = 55.0;
+    var stressIndex = 30.0;
+    var motionIntensity = 15.0;
+    var bodyMovement = "micro";
+    var sleepStage = "awake";
+    var breathRegularity = 0.65;
+
     // Initialize presence grid
     for (var gy = 0; gy < GRID_H; gy++) {
         presenceGrid.push([]);
@@ -69,6 +78,37 @@
                        Math.sin((hp - 0.20) / 0.80 * Math.PI) * 0.05;
         heartWave.push(heartVal);
         if (heartWave.length > 120) heartWave.shift();
+
+        // Extended metrics simulation
+        // HRV: oscillates 25-65ms with slow drift
+        hrvRmssd = 42 + Math.sin(t * 0.03) * 15 + Math.sin(t * 0.11) * 5;
+        hrvSdnn = hrvRmssd * 1.3 + Math.sin(t * 0.04) * 8;
+
+        // Stress: inversely correlated with HRV
+        stressIndex = Math.max(0, Math.min(100,
+            50 - (hrvRmssd - 42) * 1.5 + Math.sin(t * 0.06) * 10));
+
+        // Motion: periodic activity bursts
+        var motionBase = 12 + Math.sin(t * 0.08) * 10;
+        var burst = Math.max(0, Math.sin(t * 0.02) * 40);
+        motionIntensity = Math.max(0, Math.min(100, motionBase + burst));
+
+        // Body movement classification
+        if (motionIntensity < 10) bodyMovement = "still";
+        else if (motionIntensity < 40) bodyMovement = "micro";
+        else bodyMovement = "gross";
+
+        // Breathing regularity
+        breathRegularity = 0.65 + Math.sin(t * 0.04) * 0.25;
+        breathRegularity = Math.max(0, Math.min(1, breathRegularity));
+
+        // Sleep stage (cycle slowly for demo)
+        var sleepPhase = (t * 0.01) % 4;
+        if (motionIntensity > 30) sleepStage = "awake";
+        else if (sleepPhase < 1) sleepStage = "awake";
+        else if (sleepPhase < 2) sleepStage = "light";
+        else if (sleepPhase < 3) sleepStage = "deep";
+        else sleepStage = "rem";
     }
 
     // ═══ CSI Waterfall Simulation ═════════════════════════════
@@ -127,6 +167,21 @@
         // Waveforms
         drawWaveform("breath-wave", breathWave, "#00cc88");
         drawWaveform("heart-wave", heartWave, "#ff4466");
+
+        // HUD: HRV + Stress overlay
+        var hudHrv = document.getElementById("hud-hrv-val");
+        if (hudHrv) hudHrv.textContent = hrvRmssd.toFixed(0) + " ms";
+        var hudStress = document.getElementById("hud-stress-val");
+        if (hudStress) {
+            hudStress.textContent = stressIndex.toFixed(0);
+            hudStress.style.color = stressIndex > 60 ? "#ff4466" :
+                                     stressIndex > 35 ? "#ffaa00" : "#00cc88";
+        }
+        var hudStressBar = document.getElementById("hud-stress-bar");
+        if (hudStressBar) hudStressBar.style.width = stressIndex.toFixed(0) + "%";
+
+        // Dashboard: Health Metrics panel
+        renderHealthMetrics();
     }
 
     function drawWaveform(canvasId, data, color) {
@@ -161,6 +216,50 @@
         ctx.lineWidth = 4;
         ctx.stroke();
         ctx.globalAlpha = 1.0;
+    }
+
+    // ═══ Render: Health Metrics (Dashboard panel) ═════════════
+    function renderHealthMetrics() {
+        var el;
+
+        // HRV
+        el = document.getElementById("hrv-rmssd-val");
+        if (el) el.textContent = hrvRmssd.toFixed(0) + " ms";
+        el = document.getElementById("hrv-sdnn-val");
+        if (el) el.textContent = hrvSdnn.toFixed(0) + " ms";
+
+        // Stress
+        el = document.getElementById("stress-val");
+        if (el) {
+            el.textContent = stressIndex.toFixed(0) + "/100";
+            el.style.color = stressIndex > 60 ? "#ff4466" :
+                             stressIndex > 35 ? "#ffaa00" : "#00cc88";
+        }
+        el = document.getElementById("stress-bar");
+        if (el) el.style.width = stressIndex.toFixed(0) + "%";
+
+        // Motion
+        el = document.getElementById("motion-val");
+        if (el) {
+            el.textContent = motionIntensity.toFixed(0) + "/100";
+            el.style.color = motionIntensity > 60 ? "#ff4466" :
+                             motionIntensity > 30 ? "#ffaa00" : "#00aaff";
+        }
+        el = document.getElementById("movement-val");
+        if (el) {
+            el.textContent = bodyMovement.charAt(0).toUpperCase() + bodyMovement.slice(1);
+        }
+
+        // Sleep
+        el = document.getElementById("sleep-val");
+        if (el) {
+            var sleepLabels = { awake: "Awake", light: "Light", deep: "Deep", rem: "REM" };
+            var sleepColors = { awake: "#e0e0e0", light: "#66ccff", deep: "#4466ff", rem: "#aa66ff" };
+            el.textContent = sleepLabels[sleepStage] || "--";
+            el.style.color = sleepColors[sleepStage] || "#e0e0e0";
+        }
+        el = document.getElementById("breath-reg-bar");
+        if (el) el.style.width = (breathRegularity * 100).toFixed(0) + "%";
     }
 
     // ═══ Render: CSI Waterfall ════════════════════════════════
@@ -563,6 +662,15 @@
             heartRate = heart;
             breathConf = bConf;
             heartConf = hConf;
+        },
+        setExtendedVitals: function (data) {
+            if (data.hrv_rmssd !== undefined) hrvRmssd = data.hrv_rmssd;
+            if (data.hrv_sdnn !== undefined) hrvSdnn = data.hrv_sdnn;
+            if (data.stress_index !== undefined) stressIndex = data.stress_index;
+            if (data.motion_intensity !== undefined) motionIntensity = data.motion_intensity;
+            if (data.body_movement !== undefined) bodyMovement = data.body_movement;
+            if (data.sleep_stage !== undefined) sleepStage = data.sleep_stage;
+            if (data.breath_regularity !== undefined) breathRegularity = data.breath_regularity;
         },
         pushCSI: function (subcarrierAmplitudes) {
             csiHistory.push(subcarrierAmplitudes);

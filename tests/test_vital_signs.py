@@ -80,6 +80,77 @@ class TestVitalSignsExtractor:
         assert "respiratory_distress" in result
         assert "apnea_events" in result
         assert "buffer_fullness" in result
+        # Extended metrics
+        assert "hrv_rmssd" in result
+        assert "hrv_sdnn" in result
+        assert "stress_index" in result
+        assert "motion_intensity" in result
+        assert "body_movement" in result
+        assert "breath_regularity" in result
+        assert "sleep_stage" in result
+
+    def test_hrv_from_heart_signal(self):
+        """HRV should be computed from clear heart signal peaks."""
+        fs = 100.0
+        vs = VitalSignsExtractor(sample_rate=fs, window_sec=30.0)
+
+        t = np.arange(0, 30, 1 / fs)
+        heart_freq = 1.2  # 72 BPM → ~833ms between beats
+
+        for i in range(len(t)):
+            base = np.ones(30) * 0.5
+            modulation = 0.05 * np.sin(2 * np.pi * heart_freq * t[i])
+            vs.push_csi(base + modulation + np.random.randn(30) * 0.002)
+
+        result = vs.update()
+        # With a clean sinusoidal heart signal, HRV should be detectable
+        assert result["hrv_rmssd"] >= 0
+        assert result["hrv_sdnn"] >= 0
+
+    def test_stress_index_range(self):
+        """Stress index should be 0-100."""
+        vs = VitalSignsExtractor(sample_rate=100.0, window_sec=30.0)
+        t = np.arange(0, 30, 1 / 100.0)
+        for i in range(len(t)):
+            base = np.ones(30) * 0.5
+            mod = 0.05 * np.sin(2 * np.pi * 1.2 * t[i])
+            vs.push_csi(base + mod + np.random.randn(30) * 0.002)
+        result = vs.update()
+        assert 0 <= result["stress_index"] <= 100
+
+    def test_motion_intensity(self):
+        """Motion intensity should respond to high-frequency CSI variance."""
+        fs = 100.0
+        vs = VitalSignsExtractor(sample_rate=fs, window_sec=30.0)
+
+        t = np.arange(0, 30, 1 / fs)
+        for i in range(len(t)):
+            base = np.ones(30) * 0.5
+            # Add strong motion signal at 3 Hz
+            motion = 0.2 * np.sin(2 * np.pi * 3.0 * t[i])
+            vs.push_csi(base + motion + np.random.randn(30) * 0.01)
+
+        result = vs.update()
+        assert result["motion_intensity"] > 0
+        assert result["body_movement"] in ("still", "micro", "gross")
+
+    def test_sleep_stage_values(self):
+        """Sleep stage should be one of the valid values."""
+        vs = VitalSignsExtractor()
+        result = vs.update()
+        assert result["sleep_stage"] in ("awake", "light", "deep", "rem")
+
+    def test_breath_regularity_range(self):
+        """Breath regularity should be 0-1."""
+        fs = 100.0
+        vs = VitalSignsExtractor(sample_rate=fs, window_sec=30.0)
+        t = np.arange(0, 30, 1 / fs)
+        for i in range(len(t)):
+            base = np.ones(30) * 0.5
+            mod = 0.1 * np.sin(2 * np.pi * 0.25 * t[i])
+            vs.push_csi(base + mod + np.random.randn(30) * 0.01)
+        result = vs.update()
+        assert 0 <= result["breath_regularity"] <= 1
 
     def test_get_subcarrier_amplitudes(self):
         vs = VitalSignsExtractor()

@@ -282,6 +282,7 @@
                     v.breathing_bpm, v.heart_bpm,
                     v.breathing_confidence, v.heart_confidence
                 );
+                window.VitalsHUD.setExtendedVitals(v);
             }
             if (data.csi_amplitudes && window.VitalsHUD) {
                 window.VitalsHUD.pushCSI(data.csi_amplitudes);

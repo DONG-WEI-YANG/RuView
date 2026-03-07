@@ -361,49 +361,74 @@
     }
 
     SMPLMeshRenderer.prototype._build = function () {
-        var tex = createBodyTexture();
-        var mat = new THREE.MeshPhongMaterial({
-            map: tex,
-            color: 0xe8bb99,
-            emissive: 0x332211,
-            emissiveIntensity: 0.15,
-            shininess: 28,
-            side: THREE.DoubleSide,
+        // ── Wireframe mesh style (matching Wi-Mesh / 3D activity detection) ──
+        // Primary wireframe: bright cyan/green edges
+        var wireMat = new THREE.MeshBasicMaterial({
+            color: 0x00ffaa,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.85,
         });
-        this._material = mat;
+        // Glow layer: slightly larger, softer edges for halo effect
+        var glowMat = new THREE.MeshBasicMaterial({
+            color: 0x00ff88,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.15,
+        });
+        this._material = wireMat;
 
-        // Build chain meshes
+        // Build chain meshes (wireframe + glow double layer)
         for (var ci = 0; ci < CHAINS.length; ci++) {
             var ch = CHAINS[ci];
             var geom = buildChainGeom(ch, REST);
-            var mesh = new THREE.Mesh(geom, mat.clone());
-            mesh.castShadow = true;
-            mesh.receiveShadow = true;
+
+            // Primary wireframe mesh
+            var mesh = new THREE.Mesh(geom, wireMat.clone());
             mesh.frustumCulled = false;
             this.group.add(mesh);
+
+            // Glow halo mesh (slightly scaled up)
+            var glowGeom = buildChainGeom(ch, REST);
+            var glowMesh = new THREE.Mesh(glowGeom, glowMat.clone());
+            glowMesh.scale.set(1.03, 1.0, 1.03);
+            glowMesh.frustumCulled = false;
+            this.group.add(glowMesh);
+
             this._chainData.push({
                 def: ch,
                 mesh: mesh,
                 geom: geom,
                 posAttr: geom.getAttribute("position"),
                 norAttr: geom.getAttribute("normal"),
+                glowMesh: glowMesh,
+                glowGeom: glowGeom,
+                glowPosAttr: glowGeom.getAttribute("position"),
+                glowNorAttr: glowGeom.getAttribute("normal"),
             });
         }
 
-        // Head ellipsoid
-        var headGeom = new THREE.SphereGeometry(0.098, 24, 18);
-        this.headMesh = new THREE.Mesh(headGeom, mat.clone());
+        // Head ellipsoid (wireframe sphere)
+        var headGeom = new THREE.SphereGeometry(0.098, 16, 12);
+        this.headMesh = new THREE.Mesh(headGeom, wireMat.clone());
         this.headMesh.scale.set(1.0, 1.18, 0.92);
-        this.headMesh.castShadow = true;
         this.group.add(this.headMesh);
 
-        // Joint spheres
-        var sphGeom = new THREE.SphereGeometry(1, 12, 10);
+        // Head glow
+        var headGlow = new THREE.Mesh(
+            new THREE.SphereGeometry(0.104, 16, 12),
+            glowMat.clone()
+        );
+        headGlow.scale.set(1.0, 1.18, 0.92);
+        this.group.add(headGlow);
+        this._headGlow = headGlow;
+
+        // Joint spheres (wireframe)
+        var sphGeom = new THREE.SphereGeometry(1, 8, 6);
         for (var si = 0; si < JSPHERES.length; si++) {
             var jd = JSPHERES[si];
-            var sm = new THREE.Mesh(sphGeom, mat.clone());
+            var sm = new THREE.Mesh(sphGeom, wireMat.clone());
             sm.scale.set(jd.r, jd.r, jd.r);
-            sm.castShadow = true;
             this.group.add(sm);
             this._spheres.push({ mesh: sm, idx: jd.idx });
         }
@@ -415,9 +440,8 @@
         ];
         for (var ci2 = 0; ci2 < caps.length; ci2++) {
             var cd = caps[ci2];
-            var cm = new THREE.Mesh(sphGeom, mat.clone());
+            var cm = new THREE.Mesh(sphGeom, wireMat.clone());
             cm.scale.set(cd.r, cd.r * 0.7, cd.r);
-            cm.castShadow = true;
             this.group.add(cm);
             this._spheres.push({ mesh: cm, idx: cd.j });
         }
@@ -438,15 +462,24 @@
             for (var ji = 0; ji < ch.joints.length; ji++) {
                 jts.push(joints[ch.joints[ji]]);
             }
+            // Primary wireframe
             fillVerts(cd.posAttr.array, cd.norAttr.array, ch.rings, jts, ch.jointT, ch.up);
             cd.posAttr.needsUpdate = true;
             cd.norAttr.needsUpdate = true;
             cd.geom.boundingSphere = null;
+            // Glow layer
+            if (cd.glowPosAttr) {
+                fillVerts(cd.glowPosAttr.array, cd.glowNorAttr.array, ch.rings, jts, ch.jointT, ch.up);
+                cd.glowPosAttr.needsUpdate = true;
+                cd.glowNorAttr.needsUpdate = true;
+                cd.glowGeom.boundingSphere = null;
+            }
         }
 
         // Head
         var h = joints[0];
         this.headMesh.position.set(h[0], h[1], h[2]);
+        if (this._headGlow) this._headGlow.position.set(h[0], h[1], h[2]);
 
         // Joint spheres + caps
         for (var si = 0; si < this._spheres.length; si++) {

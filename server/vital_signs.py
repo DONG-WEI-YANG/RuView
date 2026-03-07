@@ -1,16 +1,29 @@
-"""Vital signs extraction from CSI data: breathing, heart rate, respiratory distress."""
+"""Vital signs extraction from CSI data: breathing, heart rate, HRV, sleep, motion.
+
+Enhanced with Wi-Mesh-inspired metrics:
+- Heart Rate Variability (HRV) via inter-beat interval analysis
+- Sleep stage estimation from breathing regularity + motion level
+- Motion intensity score from broadband CSI variance
+- Stress index derived from HRV (RMSSD)
+"""
 import numpy as np
 from scipy.signal import butter, sosfiltfilt, find_peaks
 
 
 class VitalSignsExtractor:
-    """Extract breathing rate and heart rate from CSI amplitude variance.
+    """Extract vital signs and wellness metrics from CSI amplitude.
 
     Physics basis:
     - Breathing: chest displacement ~10mm at 0.15-0.5 Hz (9-30 BPM)
       → clear periodic signal in CSI amplitude variance
     - Heart rate: chest wall displacement ~0.5mm at 0.8-2.0 Hz (48-120 BPM)
       → requires higher SNR, person must be relatively still
+    - HRV: beat-to-beat interval variance from heart signal peaks
+      → autonomic nervous system / stress indicator
+    - Sleep staging: breathing regularity + motion level classification
+      → wake / light / deep / REM estimation
+    - Motion intensity: broadband (1-8 Hz) CSI variance RMS
+      → activity level 0-100
     - SpO2: NOT measurable from WiFi (requires optical sensing)
       → we detect breathing anomalies as a respiratory distress proxy
     """
@@ -26,6 +39,14 @@ class VitalSignsExtractor:
         self.resp_distress = False
         self.apnea_count = 0
         self._apnea_frames = 0
+        # New Wi-Mesh-inspired metrics
+        self.hrv_rmssd = 0.0        # HRV: root mean square of successive differences (ms)
+        self.hrv_sdnn = 0.0         # HRV: standard deviation of NN intervals (ms)
+        self.stress_index = 0.0     # 0-100 stress score (high = stressed)
+        self.motion_intensity = 0.0 # 0-100 motion activity score
+        self.sleep_stage = "awake"  # awake / light / deep / rem
+        self.body_movement = "still"  # still / micro / gross
+        self.breath_regularity = 0.0  # 0-1 how regular breathing is
 
     def push_csi(self, amplitudes: np.ndarray):
         """Push one CSI frame (vector of subcarrier amplitudes)."""
@@ -54,6 +75,21 @@ class VitalSignsExtractor:
         self.heart_rate, self.heart_confidence = self._estimate_rate(
             heart_sig, min_hz=0.8, max_hz=2.0, label="heart"
         )
+
+        # ── HRV from heart signal peaks ──────────────────────────
+        self._compute_hrv(heart_sig)
+
+        # ── Stress index from HRV ────────────────────────────────
+        self._compute_stress()
+
+        # ── Motion intensity (broadband 1–8 Hz) ─────────────────
+        self._compute_motion_intensity(mean_amp)
+
+        # ── Breathing regularity ─────────────────────────────────
+        self._compute_breath_regularity(breath_sig)
+
+        # ── Sleep stage estimation ───────────────────────────────
+        self._estimate_sleep_stage()
 
         # ── Respiratory distress detection ────────────────────────
         self._detect_resp_distress(breath_sig)
@@ -103,6 +139,157 @@ class VitalSignsExtractor:
         bpm = peak_freq * 60.0
         return round(bpm, 1), round(confidence, 2)
 
+    def _compute_hrv(self, heart_sig: np.ndarray):
+        """Compute Heart Rate Variability from inter-beat intervals.
+
+        Detects peaks in the bandpassed heart signal, computes IBI
+        (inter-beat intervals), then derives RMSSD and SDNN.
+        """
+        if len(heart_sig) < int(self.fs * 5):
+            return
+
+        # Find heartbeat peaks (positive peaks in bandpassed signal)
+        min_distance = int(self.fs * 0.4)  # minimum 0.4s between beats (~150 BPM max)
+        # Adaptive threshold: use signal statistics
+        threshold = np.mean(heart_sig) + 0.3 * np.std(heart_sig)
+        peaks, _ = find_peaks(heart_sig, distance=min_distance, height=threshold)
+
+        if len(peaks) < 3:
+            self.hrv_rmssd = 0.0
+            self.hrv_sdnn = 0.0
+            return
+
+        # Inter-beat intervals in milliseconds
+        ibi_samples = np.diff(peaks)
+        ibi_ms = ibi_samples * (1000.0 / self.fs)
+
+        # Filter out physiologically impossible intervals (<300ms or >2000ms)
+        valid = (ibi_ms > 300) & (ibi_ms < 2000)
+        ibi_ms = ibi_ms[valid]
+
+        if len(ibi_ms) < 2:
+            return
+
+        # RMSSD: root mean square of successive differences
+        successive_diffs = np.diff(ibi_ms)
+        self.hrv_rmssd = round(float(np.sqrt(np.mean(successive_diffs ** 2))), 1)
+
+        # SDNN: standard deviation of all NN intervals
+        self.hrv_sdnn = round(float(np.std(ibi_ms)), 1)
+
+    def _compute_stress(self):
+        """Derive stress index from HRV metrics.
+
+        Low HRV (RMSSD) correlates with high sympathetic activation (stress).
+        Normal RMSSD range: 20-100ms. Below 20ms = high stress.
+        """
+        if self.hrv_rmssd <= 0:
+            self.stress_index = 0.0
+            return
+
+        # Map RMSSD to stress: low RMSSD = high stress
+        # RMSSD < 15ms → stress ~90-100
+        # RMSSD 15-30ms → stress ~50-90
+        # RMSSD 30-60ms → stress ~20-50
+        # RMSSD > 60ms → stress ~0-20
+        rmssd = self.hrv_rmssd
+        if rmssd < 15:
+            stress = 90 + (15 - rmssd) / 15 * 10
+        elif rmssd < 30:
+            stress = 50 + (30 - rmssd) / 15 * 40
+        elif rmssd < 60:
+            stress = 20 + (60 - rmssd) / 30 * 30
+        else:
+            stress = max(0, 20 - (rmssd - 60) / 40 * 20)
+
+        self.stress_index = round(min(100.0, max(0.0, stress)), 1)
+
+    def _compute_motion_intensity(self, mean_amp: np.ndarray):
+        """Compute motion intensity from broadband CSI variance (1-8 Hz).
+
+        Higher variance in the motion band = more body movement.
+        Scaled to 0-100 score.
+        """
+        if len(mean_amp) < int(self.fs * 2):
+            self.motion_intensity = 0.0
+            self.body_movement = "still"
+            return
+
+        motion_sig = self._bandpass(mean_amp, 1.0, 8.0)
+        rms = float(np.sqrt(np.mean(motion_sig ** 2)))
+
+        # Scale: typical RMS values 0.001-0.1 → 0-100
+        # Using log scale for better dynamic range
+        if rms < 1e-6:
+            score = 0.0
+        else:
+            score = min(100.0, max(0.0, (np.log10(rms) + 4) * 25))
+
+        self.motion_intensity = round(score, 1)
+
+        # Classify body movement level
+        if score < 10:
+            self.body_movement = "still"
+        elif score < 40:
+            self.body_movement = "micro"
+        else:
+            self.body_movement = "gross"
+
+    def _compute_breath_regularity(self, breath_sig: np.ndarray):
+        """Measure breathing regularity via coefficient of variation of breath intervals."""
+        if len(breath_sig) < int(self.fs * 10):
+            self.breath_regularity = 0.0
+            return
+
+        # Find breathing cycle peaks
+        min_dist = int(self.fs * 1.5)  # min 1.5s between breaths (~40 BPM max)
+        peaks, _ = find_peaks(breath_sig, distance=min_dist)
+
+        if len(peaks) < 3:
+            self.breath_regularity = 0.0
+            return
+
+        intervals = np.diff(peaks) / self.fs  # in seconds
+        mean_interval = np.mean(intervals)
+        if mean_interval < 0.01:
+            self.breath_regularity = 0.0
+            return
+
+        # Coefficient of variation: lower = more regular
+        cv = np.std(intervals) / mean_interval
+        # Map CV to regularity: CV=0 → regularity=1.0, CV>0.5 → regularity≈0
+        self.breath_regularity = round(float(np.clip(1.0 - cv * 2.0, 0, 1)), 2)
+
+    def _estimate_sleep_stage(self):
+        """Estimate sleep stage from breathing regularity and motion level.
+
+        Sleep staging heuristic:
+        - Awake: motion > 30 OR breathing regularity < 0.3
+        - REM: low motion, irregular breathing (regularity 0.3-0.6)
+        - Light sleep: low motion, moderate regularity (0.6-0.8)
+        - Deep sleep: very low motion, high regularity (>0.8), slow breathing
+        """
+        motion = self.motion_intensity
+        reg = self.breath_regularity
+        bpm = self.breath_rate
+
+        if motion > 30:
+            self.sleep_stage = "awake"
+        elif motion > 15 or reg < 0.3:
+            self.sleep_stage = "awake"
+        elif reg < 0.6:
+            # Low motion + irregular breathing → REM
+            self.sleep_stage = "rem"
+        elif reg < 0.8:
+            self.sleep_stage = "light"
+        else:
+            # Very regular breathing + very low motion
+            # Deep sleep tends to have slower breathing (10-14 BPM)
+            if bpm > 0 and bpm < 16:
+                self.sleep_stage = "deep"
+            else:
+                self.sleep_stage = "light"
+
     def _detect_resp_distress(self, breath_sig: np.ndarray):
         """Detect apnea / abnormal breathing patterns as SpO2 proxy."""
         # Apnea: breathing signal amplitude drops below threshold
@@ -131,6 +318,14 @@ class VitalSignsExtractor:
             "respiratory_distress": self.resp_distress,
             "apnea_events": self.apnea_count,
             "buffer_fullness": min(1.0, len(self.csi_buffer) / self.window_size),
+            # Wi-Mesh-inspired extended metrics
+            "hrv_rmssd": self.hrv_rmssd,
+            "hrv_sdnn": self.hrv_sdnn,
+            "stress_index": self.stress_index,
+            "motion_intensity": self.motion_intensity,
+            "body_movement": self.body_movement,
+            "breath_regularity": self.breath_regularity,
+            "sleep_stage": self.sleep_stage,
         }
 
     def get_subcarrier_amplitudes(self) -> list[float] | None:

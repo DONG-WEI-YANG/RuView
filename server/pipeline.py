@@ -1,4 +1,11 @@
-"""Integration pipeline: CSI -> signal processing -> model -> applications."""
+"""Integration pipeline: CSI -> signal processing -> model -> applications.
+
+Transparency note (addressing WiFi DensePose criticism):
+- When model weights are present: runs real inference on CSI data
+- When model weights are missing: logs explicit warning, pipeline receives
+  CSI data but cannot produce joint estimates until weights are trained/loaded
+- No "mock hardware" mode — CSI receiver is always real UDP input
+"""
 import logging
 from collections import deque
 
@@ -29,9 +36,20 @@ class PosePipeline:
         self._current_frame_nodes: dict[int, np.ndarray] = {}
         self._window: deque[dict[int, np.ndarray]] = deque(maxlen=window_size)
         self.latest_joints: np.ndarray | None = None
+        self.csi_frames_received: int = 0  # track real CSI frames for status
+
+        if self.model is None:
+            logger.warning(
+                "PosePipeline: no model weights loaded. CSI data will be "
+                "received and processed but joint inference is unavailable. "
+                "Train a model with `python -m server.train` or provide "
+                "weights at %s",
+                settings.model_path,
+            )
 
     def on_csi_frame(self, frame: CSIFrame):
         self._current_frame_nodes[frame.node_id] = frame.amplitude
+        self.csi_frames_received += 1
 
     def flush_frame(self):
         if not self._current_frame_nodes:
