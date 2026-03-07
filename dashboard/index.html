@@ -11,6 +11,7 @@
         <header>
             <h1>WiFi Body</h1>
             <div id="status-bar">
+                <span id="mode-badge" class="mode-badge demo">DEMO</span>
                 <span id="connection-status" class="status-dot offline">Offline</span>
                 <span id="fps-counter">0 FPS</span>
                 <span id="node-count">0 nodes</span>
@@ -34,6 +35,27 @@
             <main>
                 <section id="viewer-section">
                     <canvas id="skeleton-canvas"></canvas>
+                    <!-- Vital Signs HUD Overlay -->
+                    <div id="vitals-hud">
+                        <div class="hud-card hud-breath">
+                            <div class="hud-icon">~</div>
+                            <div class="hud-info">
+                                <span class="hud-label">BREATHING</span>
+                                <span class="hud-value" id="breath-val">-- BPM</span>
+                                <div class="hud-conf"><div class="hud-conf-fill" id="breath-conf-bar"></div></div>
+                            </div>
+                            <canvas id="breath-wave" width="120" height="36"></canvas>
+                        </div>
+                        <div class="hud-card hud-heart">
+                            <div class="hud-icon">&#9829;</div>
+                            <div class="hud-info">
+                                <span class="hud-label">HEART RATE</span>
+                                <span class="hud-value" id="heart-val">-- BPM</span>
+                                <div class="hud-conf"><div class="hud-conf-fill heart" id="heart-conf-bar"></div></div>
+                            </div>
+                            <canvas id="heart-wave" width="120" height="36"></canvas>
+                        </div>
+                    </div>
                 </section>
                 <aside id="info-panel">
                     <div id="activity-card" class="card">
@@ -117,6 +139,12 @@
                             <span class="stat-label">Total Detections</span>
                         </div>
                     </div>
+                </div>
+
+                <!-- Presence Heatmap -->
+                <div class="panel">
+                    <h2>Presence Heatmap</h2>
+                    <canvas id="presence-heatmap" width="480" height="260"></canvas>
                 </div>
 
                 <!-- Zone Occupancy -->
@@ -263,6 +291,11 @@
         <div id="tab-sensing" class="tab-content">
             <div class="tab-scroll">
                 <div class="sensing-grid">
+                    <div class="panel" style="grid-column: 1 / -1;">
+                        <h2>CSI Subcarrier Waterfall</h2>
+                        <canvas id="csi-waterfall" width="600" height="240"></canvas>
+                    </div>
+
                     <div class="panel">
                         <h2>WiFi Signal Sensing</h2>
                         <div class="sensing-status">
@@ -424,6 +457,7 @@
     <script src="smpl-mesh.js"></script>
     <script src="body-mesh.js"></script>
     <script src="skeleton3d.js"></script>
+    <script src="vitals-hud.js"></script>
 
     <!-- Tab switching + Hardware interaction -->
     <script>
