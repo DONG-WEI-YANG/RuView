@@ -249,6 +249,17 @@
         ws.onmessage = function (event) {
             var data = JSON.parse(event.data);
             if (data.joints) updateSkeleton(data.joints);
+            // Forward vitals + CSI to HUD if available
+            if (data.vitals && window.VitalsHUD) {
+                var v = data.vitals;
+                window.VitalsHUD.setVitals(
+                    v.breathing_bpm, v.heart_bpm,
+                    v.breathing_confidence, v.heart_confidence
+                );
+            }
+            if (data.csi_amplitudes && window.VitalsHUD) {
+                window.VitalsHUD.pushCSI(data.csi_amplitudes);
+            }
         };
         ws.onclose = function () {
             statusEl.textContent = "Offline";

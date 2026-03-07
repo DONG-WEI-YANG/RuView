@@ -1,0 +1,113 @@
+"""Tests for vital signs extraction from CSI data."""
+import numpy as np
+import pytest
+
+from server.vital_signs import VitalSignsExtractor, MultiPersonTracker
+
+
+class TestVitalSignsExtractor:
+    def test_init(self):
+        vs = VitalSignsExtractor(sample_rate=100.0, window_sec=30.0)
+        assert vs.fs == 100.0
+        assert vs.window_size == 3000
+        assert vs.breath_rate == 0.0
+
+    def test_push_csi(self):
+        vs = VitalSignsExtractor(sample_rate=100.0)
+        for _ in range(10):
+            vs.push_csi(np.random.rand(30))
+        assert len(vs.csi_buffer) == 10
+
+    def test_buffer_overflow(self):
+        vs = VitalSignsExtractor(sample_rate=10.0, window_sec=2.0)
+        for _ in range(50):
+            vs.push_csi(np.random.rand(30))
+        assert len(vs.csi_buffer) == 20  # 10 * 2 = 20
+
+    def test_breathing_detection(self):
+        """Inject a clear 15 BPM (0.25 Hz) breathing signal into CSI."""
+        fs = 100.0
+        vs = VitalSignsExtractor(sample_rate=fs, window_sec=30.0)
+
+        t = np.arange(0, 30, 1 / fs)  # 30 seconds
+        breath_freq = 0.25  # 15 BPM
+
+        for i in range(len(t)):
+            # Create CSI with breathing modulation
+            base = np.ones(30) * 0.5
+            modulation = 0.1 * np.sin(2 * np.pi * breath_freq * t[i])
+            vs.push_csi(base + modulation + np.random.randn(30) * 0.01)
+
+        result = vs.update()
+        # Should detect breathing near 15 BPM
+        assert 10.0 < result["breathing_bpm"] < 20.0
+        assert result["breathing_confidence"] > 0.3
+
+    def test_heart_rate_detection(self):
+        """Inject a clear 72 BPM (1.2 Hz) heart signal into CSI."""
+        fs = 100.0
+        vs = VitalSignsExtractor(sample_rate=fs, window_sec=30.0)
+
+        t = np.arange(0, 30, 1 / fs)
+        heart_freq = 1.2  # 72 BPM
+
+        for i in range(len(t)):
+            base = np.ones(30) * 0.5
+            # Heart signal is much weaker than breathing
+            modulation = 0.02 * np.sin(2 * np.pi * heart_freq * t[i])
+            vs.push_csi(base + modulation + np.random.randn(30) * 0.005)
+
+        result = vs.update()
+        # Should detect heart rate near 72 BPM
+        assert 50.0 < result["heart_bpm"] < 90.0
+        assert result["heart_confidence"] > 0.1
+
+    def test_insufficient_data(self):
+        vs = VitalSignsExtractor(sample_rate=100.0)
+        # Only push a few frames (< 5 seconds)
+        for _ in range(100):
+            vs.push_csi(np.random.rand(30))
+        result = vs.update()
+        assert result["buffer_fullness"] < 0.1
+
+    def test_result_structure(self):
+        vs = VitalSignsExtractor()
+        result = vs.update()
+        assert "breathing_bpm" in result
+        assert "heart_bpm" in result
+        assert "breathing_confidence" in result
+        assert "heart_confidence" in result
+        assert "respiratory_distress" in result
+        assert "apnea_events" in result
+        assert "buffer_fullness" in result
+
+    def test_get_subcarrier_amplitudes(self):
+        vs = VitalSignsExtractor()
+        assert vs.get_subcarrier_amplitudes() is None
+        vs.push_csi(np.array([0.1, 0.2, 0.3]))
+        amps = vs.get_subcarrier_amplitudes()
+        assert amps is not None
+        assert len(amps) == 3
+
+
+class TestMultiPersonTracker:
+    def test_init(self):
+        mp = MultiPersonTracker(max_persons=4)
+        assert mp.person_count == 0
+
+    def test_single_person(self):
+        mp = MultiPersonTracker(max_persons=4, sample_rate=10.0)
+        # Push data from 6 antenna pairs
+        for _ in range(50):
+            data = {}
+            for tx in range(3):
+                for rx in range(2):
+                    key = f"TX{tx}_RX{rx}"
+                    data[key] = np.random.rand(30) * 0.5
+            mp.push_multi_antenna_csi(data)
+        assert mp.person_count >= 1
+
+    def test_update_all(self):
+        mp = MultiPersonTracker()
+        results = mp.update_all()
+        assert isinstance(results, list)

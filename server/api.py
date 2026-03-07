@@ -13,6 +13,7 @@ from server.csi_receiver import CSIReceiver
 from server.signal_processor import SignalProcessor
 from server.fall_detector import FallDetector
 from server.fitness_tracker import FitnessTracker
+from server.vital_signs import VitalSignsExtractor, MultiPersonTracker
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,8 @@ _state = {
     "latest_joints": None,
     "connected_ws": set(),
     "node_frames": {},
+    "vitals": None,
+    "multi_person": None,
 }
 
 
@@ -35,6 +38,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     _state["processor"] = SignalProcessor(settings)
     _state["fall_detector"] = FallDetector(threshold=settings.fall_threshold)
     _state["fitness_tracker"] = FitnessTracker()
+    _state["vitals"] = VitalSignsExtractor(sample_rate=settings.csi_sample_rate)
+    _state["multi_person"] = MultiPersonTracker(
+        max_persons=4, sample_rate=settings.csi_sample_rate
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -72,6 +79,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "is_fallen": fd.is_fallen if fd else False,
             "current_activity": ft.current_activity.value if ft else "unknown",
             "fall_alerts": len(fd.get_alerts()) if fd else 0,
+            "vitals": _state["vitals"].update() if _state["vitals"] else None,
+            "person_count": _state["multi_person"].person_count if _state["multi_person"] else 0,
         }
 
     @app.get("/api/joints")
@@ -80,6 +89,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if joints is None:
             return {"joints": None}
         return {"joints": joints.tolist()}
+
+    @app.get("/api/vitals")
+    async def get_vitals():
+        vs = _state["vitals"]
+        mp = _state["multi_person"]
+        return {
+            "primary": vs.update() if vs else None,
+            "csi_amplitudes": vs.get_subcarrier_amplitudes() if vs else None,
+            "persons": mp.update_all() if mp else [],
+        }
 
     @app.get("/api/alerts")
     async def get_alerts():
@@ -112,10 +131,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
 def _on_csi_frame(frame):
     _state["node_frames"][frame.node_id] = frame
+    # Feed CSI amplitude to vital signs extractor
+    if _state["vitals"] and hasattr(frame, "amplitudes") and frame.amplitudes is not None:
+        import numpy as np
+        _state["vitals"].push_csi(np.array(frame.amplitudes, dtype=np.float32))
 
 
 async def _broadcast_joints(joints):
-    data = json.dumps({"joints": joints.tolist()})
+    payload = {"joints": joints.tolist()}
+    vs = _state["vitals"]
+    if vs:
+        vitals = vs.update()
+        payload["vitals"] = vitals
+        payload["csi_amplitudes"] = vs.get_subcarrier_amplitudes()
+    data = json.dumps(payload)
     dead = set()
     for ws in _state["connected_ws"]:
         try:
