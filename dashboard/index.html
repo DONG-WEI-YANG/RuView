@@ -14,29 +14,469 @@
                 <span id="connection-status" class="status-dot offline">Offline</span>
                 <span id="fps-counter">0 FPS</span>
                 <span id="node-count">0 nodes</span>
+                <button id="render-mode-btn" title="Toggle render mode (M)">Mesh</button>
             </div>
         </header>
-        <main>
-            <section id="viewer-section">
-                <canvas id="skeleton-canvas"></canvas>
-            </section>
-            <aside id="info-panel">
-                <div id="activity-card" class="card">
-                    <h3>Activity</h3>
-                    <p id="activity-type">--</p>
+
+        <!-- Tab Navigation -->
+        <nav id="nav-tabs">
+            <button class="nav-tab active" data-tab="viewer">3D Viewer</button>
+            <button class="nav-tab" data-tab="dashboard">Dashboard</button>
+            <button class="nav-tab" data-tab="hardware">Hardware</button>
+            <button class="nav-tab" data-tab="demo">Live Demo</button>
+            <button class="nav-tab" data-tab="sensing">Sensing</button>
+            <button class="nav-tab" data-tab="architecture">Architecture</button>
+            <button class="nav-tab" data-tab="performance">Performance</button>
+        </nav>
+
+        <!-- ══ Tab: 3D Viewer ══════════════════════════════════════ -->
+        <div id="tab-viewer" class="tab-content active">
+            <main>
+                <section id="viewer-section">
+                    <canvas id="skeleton-canvas"></canvas>
+                </section>
+                <aside id="info-panel">
+                    <div id="activity-card" class="card">
+                        <h3>Activity</h3>
+                        <p id="activity-type">--</p>
+                    </div>
+                    <div id="alert-card" class="card">
+                        <h3>Fall Alert</h3>
+                        <p id="fall-status">Normal</p>
+                    </div>
+                    <div id="nodes-card" class="card">
+                        <h3>Nodes</h3>
+                        <ul id="node-list"></ul>
+                    </div>
+                </aside>
+            </main>
+        </div>
+
+        <!-- ══ Tab: Dashboard ══════════════════════════════════════ -->
+        <div id="tab-dashboard" class="tab-content">
+            <div class="tab-scroll">
+                <!-- System Status -->
+                <div class="panel">
+                    <h2>System Status</h2>
+                    <div class="status-grid">
+                        <div class="component-status" data-component="api">
+                            <span class="comp-name">API Server</span>
+                            <span class="comp-status status-unknown">--</span>
+                        </div>
+                        <div class="component-status" data-component="hardware">
+                            <span class="comp-name">Hardware</span>
+                            <span class="comp-status status-unknown">--</span>
+                        </div>
+                        <div class="component-status" data-component="inference">
+                            <span class="comp-name">Inference</span>
+                            <span class="comp-status status-unknown">--</span>
+                        </div>
+                        <div class="component-status" data-component="streaming">
+                            <span class="comp-name">Streaming</span>
+                            <span class="comp-status status-unknown">--</span>
+                        </div>
+                    </div>
                 </div>
-                <div id="alert-card" class="card">
-                    <h3>Fall Alert</h3>
-                    <p id="fall-status">Normal</p>
+
+                <!-- System Metrics -->
+                <div class="panel">
+                    <h2>System Metrics</h2>
+                    <div class="metrics-grid">
+                        <div class="metric-row">
+                            <span class="metric-label">CPU Usage</span>
+                            <div class="progress-bar"><div class="progress-fill" id="cpu-bar" style="width:0%"></div></div>
+                            <span class="metric-val" id="cpu-val">0%</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">Memory Usage</span>
+                            <div class="progress-bar"><div class="progress-fill" id="mem-bar" style="width:0%"></div></div>
+                            <span class="metric-val" id="mem-val">0%</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">Disk Usage</span>
+                            <div class="progress-bar"><div class="progress-fill" id="disk-bar" style="width:0%"></div></div>
+                            <span class="metric-val" id="disk-val">0%</span>
+                        </div>
+                    </div>
                 </div>
-                <div id="nodes-card" class="card">
-                    <h3>Nodes</h3>
-                    <ul id="node-list"></ul>
+
+                <!-- Live Statistics -->
+                <div class="panel">
+                    <h2>Live Statistics</h2>
+                    <div class="stats-grid">
+                        <div class="stat-box">
+                            <span class="stat-value" id="stat-persons">0</span>
+                            <span class="stat-label">Active Persons</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value" id="stat-confidence">0%</span>
+                            <span class="stat-label">Avg Confidence</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value" id="stat-detections">0</span>
+                            <span class="stat-label">Total Detections</span>
+                        </div>
+                    </div>
                 </div>
-            </aside>
-        </main>
+
+                <!-- Zone Occupancy -->
+                <div class="panel">
+                    <h2>Zone Occupancy</h2>
+                    <div id="zones-summary" class="zones-grid"></div>
+                </div>
+
+                <!-- System Stats -->
+                <div class="panel">
+                    <h2>System Specs</h2>
+                    <div class="stats-grid">
+                        <div class="stat-box"><span class="stat-value">24</span><span class="stat-label">Body Regions</span></div>
+                        <div class="stat-box"><span class="stat-value">100Hz</span><span class="stat-label">Sampling Rate</span></div>
+                        <div class="stat-box"><span class="stat-value">87.2%</span><span class="stat-label">Accuracy (AP@50)</span></div>
+                        <div class="stat-box"><span class="stat-value">$30</span><span class="stat-label">Hardware Cost</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ══ Tab: Hardware (ESP32) ═══════════════════════════════ -->
+        <div id="tab-hardware" class="tab-content">
+            <div class="tab-scroll">
+                <div class="hw-grid">
+                    <!-- Antenna Array -->
+                    <div class="panel">
+                        <h2>3x3 Antenna Array</h2>
+                        <p class="help-text">Click antennas to toggle active/inactive</p>
+                        <div class="antenna-array">
+                            <div class="antenna-grid">
+                                <div class="antenna tx active" data-type="TX1">TX1</div>
+                                <div class="antenna tx active" data-type="TX2">TX2</div>
+                                <div class="antenna tx active" data-type="TX3">TX3</div>
+                                <div class="antenna rx active" data-type="RX1">RX1</div>
+                                <div class="antenna rx active" data-type="RX2">RX2</div>
+                                <div class="antenna rx active" data-type="RX3">RX3</div>
+                                <div class="antenna rx active" data-type="RX4">RX4</div>
+                                <div class="antenna rx active" data-type="RX5">RX5</div>
+                                <div class="antenna rx active" data-type="RX6">RX6</div>
+                            </div>
+                            <div class="antenna-legend">
+                                <span class="legend-tx">TX (Transmitters)</span>
+                                <span class="legend-rx">RX (Receivers)</span>
+                            </div>
+                            <div class="antenna-status">
+                                <span>Active TX: <b id="active-tx">3</b>/3</span>
+                                <span>Active RX: <b id="active-rx">6</b>/6</span>
+                                <span>Signal Quality: <b id="signal-quality">100%</b></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- WiFi Configuration -->
+                    <div class="panel">
+                        <h2>WiFi Configuration</h2>
+                        <div class="config-grid">
+                            <div class="config-item">
+                                <label>Frequency</label>
+                                <div class="config-value">2.4GHz +/- 20MHz</div>
+                            </div>
+                            <div class="config-item">
+                                <label>Subcarriers</label>
+                                <div class="config-value">30</div>
+                            </div>
+                            <div class="config-item">
+                                <label>Sampling Rate</label>
+                                <div class="config-value">100 Hz</div>
+                            </div>
+                            <div class="config-item">
+                                <label>Total Cost</label>
+                                <div class="config-value">$30</div>
+                            </div>
+                        </div>
+
+                        <h3 class="sub-heading">Real-time CSI Data</h3>
+                        <div class="csi-display">
+                            <div class="csi-row">
+                                <span class="csi-label">Amplitude:</span>
+                                <div class="csi-bar"><div class="csi-fill amplitude" id="csi-amp-bar" style="width:75%"></div></div>
+                                <span class="csi-value" id="csi-amp-val">0.75</span>
+                            </div>
+                            <div class="csi-row">
+                                <span class="csi-label">Phase:</span>
+                                <div class="csi-bar"><div class="csi-fill phase" id="csi-phase-bar" style="width:60%"></div></div>
+                                <span class="csi-value" id="csi-phase-val">1.2pi</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ══ Tab: Live Demo ══════════════════════════════════════ -->
+        <div id="tab-demo" class="tab-content">
+            <div class="tab-scroll">
+                <div class="panel">
+                    <h2>Live Demonstration</h2>
+                    <div class="demo-controls">
+                        <button id="startDemo" class="btn btn-primary">Start Stream</button>
+                        <button id="stopDemo" class="btn btn-secondary" disabled>Stop Stream</button>
+                        <span class="demo-status" id="demoStatus">Ready</span>
+                    </div>
+                </div>
+
+                <div class="demo-grid">
+                    <div class="panel">
+                        <h3>WiFi Signal Analysis</h3>
+                        <canvas id="signalCanvas" width="400" height="200"></canvas>
+                        <div class="signal-metrics">
+                            <div class="metric-row">
+                                <span class="metric-label">Signal Strength:</span>
+                                <span class="metric-val" id="signalStrength">-45 dBm</span>
+                            </div>
+                            <div class="metric-row">
+                                <span class="metric-label">Processing Latency:</span>
+                                <span class="metric-val" id="latency">12 ms</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="panel">
+                        <h3>Pose Detection</h3>
+                        <canvas id="poseCanvas" width="400" height="200"></canvas>
+                        <div class="detection-info">
+                            <div class="metric-row">
+                                <span class="metric-label">Persons Detected:</span>
+                                <span class="metric-val" id="personCount">0</span>
+                            </div>
+                            <div class="metric-row">
+                                <span class="metric-label">Confidence:</span>
+                                <span class="metric-val" id="confidence">0.0%</span>
+                            </div>
+                            <div class="metric-row">
+                                <span class="metric-label">Keypoints:</span>
+                                <span class="metric-val" id="keypoints">0/24</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ══ Tab: Sensing ════════════════════════════════════════ -->
+        <div id="tab-sensing" class="tab-content">
+            <div class="tab-scroll">
+                <div class="sensing-grid">
+                    <div class="panel">
+                        <h2>WiFi Signal Sensing</h2>
+                        <div class="sensing-status">
+                            <span class="status-dot offline" id="sensing-conn">Disconnected</span>
+                            <span>RSSI: <b id="sensing-rssi">-- dBm</b></span>
+                        </div>
+                        <canvas id="rssiSparkline" width="300" height="60"></canvas>
+                    </div>
+
+                    <div class="panel">
+                        <h2>Signal Features</h2>
+                        <div class="feature-meters">
+                            <div class="meter-row">
+                                <span>Variance</span>
+                                <div class="progress-bar"><div class="progress-fill" id="feat-variance" style="width:0%"></div></div>
+                            </div>
+                            <div class="meter-row">
+                                <span>Motion Band</span>
+                                <div class="progress-bar"><div class="progress-fill" id="feat-motion" style="width:0%"></div></div>
+                            </div>
+                            <div class="meter-row">
+                                <span>Breathing Band</span>
+                                <div class="progress-bar"><div class="progress-fill" id="feat-breathing" style="width:0%"></div></div>
+                            </div>
+                            <div class="meter-row">
+                                <span>Spectral Power</span>
+                                <div class="progress-bar"><div class="progress-fill" id="feat-spectral" style="width:0%"></div></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="panel">
+                        <h2>Classification</h2>
+                        <div class="classification-display">
+                            <div class="class-label" id="motion-level">ABSENT</div>
+                            <div class="class-conf">
+                                <span>Confidence:</span>
+                                <div class="progress-bar"><div class="progress-fill" id="class-conf-bar" style="width:0%"></div></div>
+                                <span id="class-conf-val">0%</span>
+                            </div>
+                        </div>
+                        <div class="details-grid">
+                            <div class="detail-item">
+                                <span class="detail-label">Dominant Freq</span>
+                                <span class="detail-value" id="dom-freq">0 Hz</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Change Points</span>
+                                <span class="detail-value" id="change-pts">0</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Sample Rate</span>
+                                <span class="detail-value" id="sample-rate">--</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ══ Tab: Architecture ═══════════════════════════════════ -->
+        <div id="tab-architecture" class="tab-content">
+            <div class="tab-scroll">
+                <div class="panel">
+                    <h2>System Architecture</h2>
+                    <div class="flow-steps">
+                        <div class="step-card">
+                            <div class="step-num">1</div>
+                            <h3>CSI Input</h3>
+                            <p>Channel State Information collected from WiFi antenna array</p>
+                        </div>
+                        <div class="step-card">
+                            <div class="step-num">2</div>
+                            <h3>Phase Sanitization</h3>
+                            <p>Remove hardware-specific noise and normalize signal phase</p>
+                        </div>
+                        <div class="step-card">
+                            <div class="step-num">3</div>
+                            <h3>Modality Translation</h3>
+                            <p>Convert WiFi signals to visual representation using CNN</p>
+                        </div>
+                        <div class="step-card">
+                            <div class="step-num">4</div>
+                            <h3>DensePose-RCNN</h3>
+                            <p>Extract human pose keypoints and body part segmentation</p>
+                        </div>
+                        <div class="step-card">
+                            <div class="step-num">5</div>
+                            <h3>Wireframe Output</h3>
+                            <p>Generate final human pose wireframe visualization</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <h2>Advantages</h2>
+                    <div class="benefits-grid">
+                        <div class="benefit-card"><h3>Through Walls</h3><p>Works through solid barriers with no line of sight required</p></div>
+                        <div class="benefit-card"><h3>Privacy-Preserving</h3><p>No cameras or visual recording - just WiFi signal analysis</p></div>
+                        <div class="benefit-card"><h3>Real-Time</h3><p>Maps 24 body regions in real-time at 100Hz sampling rate</p></div>
+                        <div class="benefit-card"><h3>Low Cost</h3><p>Built using $30 commercial WiFi hardware</p></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ══ Tab: Performance ════════════════════════════════════ -->
+        <div id="tab-performance" class="tab-content">
+            <div class="tab-scroll">
+                <div class="perf-grid">
+                    <div class="panel">
+                        <h2>WiFi-based (Same Layout)</h2>
+                        <div class="metric-list">
+                            <div class="metric-row"><span class="metric-label">Average Precision:</span><span class="metric-val">43.5%</span></div>
+                            <div class="metric-row"><span class="metric-label">AP@50:</span><span class="metric-val highlight">87.2%</span></div>
+                            <div class="metric-row"><span class="metric-label">AP@75:</span><span class="metric-val">44.6%</span></div>
+                        </div>
+                    </div>
+                    <div class="panel">
+                        <h2>Image-based (Reference)</h2>
+                        <div class="metric-list">
+                            <div class="metric-row"><span class="metric-label">Average Precision:</span><span class="metric-val highlight">84.7%</span></div>
+                            <div class="metric-row"><span class="metric-label">AP@50:</span><span class="metric-val highlight">94.4%</span></div>
+                            <div class="metric-row"><span class="metric-label">AP@75:</span><span class="metric-val highlight">77.1%</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <h2>Advantages & Limitations</h2>
+                    <div class="pros-cons">
+                        <div class="pros">
+                            <h3>Advantages</h3>
+                            <ul>
+                                <li>Through-wall detection</li>
+                                <li>Privacy preserving</li>
+                                <li>Lighting independent</li>
+                                <li>Low cost hardware</li>
+                                <li>Uses existing WiFi</li>
+                            </ul>
+                        </div>
+                        <div class="cons">
+                            <h3>Limitations</h3>
+                            <ul>
+                                <li>Performance drops in different layouts</li>
+                                <li>Requires WiFi-compatible devices</li>
+                                <li>Training requires synchronized data</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="smpl-mesh.js"></script>
+    <script src="body-mesh.js"></script>
     <script src="skeleton3d.js"></script>
+
+    <!-- Tab switching + Hardware interaction -->
+    <script>
+    (function () {
+        // ── Tab Navigation ─────────────────────────────────────
+        var tabs = document.querySelectorAll(".nav-tab");
+        var panels = document.querySelectorAll(".tab-content");
+
+        tabs.forEach(function (tab) {
+            tab.addEventListener("click", function () {
+                var target = tab.getAttribute("data-tab");
+                tabs.forEach(function (t) { t.classList.remove("active"); });
+                panels.forEach(function (p) { p.classList.remove("active"); });
+                tab.classList.add("active");
+                document.getElementById("tab-" + target).classList.add("active");
+                // Trigger resize so Three.js canvas adapts
+                window.dispatchEvent(new Event("resize"));
+            });
+        });
+
+        // ── Antenna Toggle ─────────────────────────────────────
+        document.querySelectorAll(".antenna").forEach(function (el) {
+            el.addEventListener("click", function () {
+                el.classList.toggle("active");
+                updateAntennaStatus();
+            });
+        });
+
+        function updateAntennaStatus() {
+            var txActive = document.querySelectorAll(".antenna.tx.active").length;
+            var rxActive = document.querySelectorAll(".antenna.rx.active").length;
+            document.getElementById("active-tx").textContent = txActive;
+            document.getElementById("active-rx").textContent = rxActive;
+            var quality = Math.round((txActive * rxActive) / (3 * 6) * 100);
+            document.getElementById("signal-quality").textContent = quality + "%";
+        }
+
+        // ── Demo buttons ───────────────────────────────────────
+        var startBtn = document.getElementById("startDemo");
+        var stopBtn = document.getElementById("stopDemo");
+        var demoSt = document.getElementById("demoStatus");
+
+        if (startBtn) startBtn.addEventListener("click", function () {
+            startBtn.disabled = true; stopBtn.disabled = false;
+            demoSt.textContent = "Streaming...";
+            demoSt.className = "demo-status streaming";
+        });
+        if (stopBtn) stopBtn.addEventListener("click", function () {
+            startBtn.disabled = false; stopBtn.disabled = true;
+            demoSt.textContent = "Stopped";
+            demoSt.className = "demo-status";
+        });
+    })();
+    </script>
 </body>
 </html>
