@@ -36,38 +36,26 @@ def _make_csi_binary_frame(
 ) -> bytes:
     """Build a realistic ADR-018 binary CSI frame (same format as ESP32 firmware).
 
-    HEADER_FORMAT = '<IBIIQBBBB H'
-    Fields: magic(I), version(B), frame_type(I), node_id(Q),
-            rssi(B), noise(B), channel(B), bandwidth(B), num_sub(H)
-
-    Note: struct unpacking uses positional indexing:
-      header[0]=magic, header[1]=version, header[2]=frame_type,
-      header[3]=node_id(but actually sequence due to field reuse),
-      header[4]=timestamp
-    Parser: node_id = header[2], sequence = header[3], timestamp = header[4]
-    So: frame_type slot carries node_id, node_id(Q) slot carries sequence.
+    HEADER_FORMAT = '<IBBHIIbbH' (20 bytes)
+    Fields: magic(I), node_id(B), num_antennas(B), num_sub(H),
+            freq_mhz(I), sequence(I), rssi(b), noise(b), reserved(H)
     """
     magic = 0xC5110001
-    version = 1
-    timestamp = seq * 50_000  # 50ms intervals = 20 Hz
 
     # Random I/Q data (int16 pairs)
     iq_data = np.random.randint(-1000, 1000, size=n_sub * 2, dtype=np.int16)
 
-    # Pack matching HEADER_FORMAT = '<IBIIQBBBB H'
-    # header[2] = node_id (I field), header[3] = sequence (I field), header[4] = timestamp (Q)
     header = struct.pack(
-        "<IBIIQBBBB H",
-        magic,          # [0] I: magic
-        version,        # [1] B: version
-        node_id,        # [2] I: parsed as node_id
-        seq,            # [3] I: parsed as sequence
-        timestamp,      # [4] Q: timestamp_ms
-        rssi & 0xFF,    # [5] B: rssi
-        noise & 0xFF,   # [6] B: noise_floor
-        6,              # [7] B: channel
-        20,             # [8] B: bandwidth
-        n_sub,          # [9] H: num_subcarriers
+        "<IBBHIIbbH",
+        magic,          # magic (I)
+        node_id,        # node_id (B)
+        1,              # num_antennas (B)
+        n_sub,          # num_subcarriers (H)
+        2437,           # freq_mhz (I) -> channel 6
+        seq,            # sequence (I)
+        rssi,           # rssi (b, signed)
+        noise,          # noise_floor (b, signed)
+        0,              # reserved (H)
     )
     return header + iq_data.tobytes()
 

@@ -4,19 +4,21 @@ from server.csi_frame import CSIFrame, parse_csi_frame, MAGIC_HEADER
 
 
 def _build_fake_frame(node_id=1, seq=42, rssi=-45, num_sub=56):
-    """Build a minimal ADR-018 binary frame for testing."""
+    """Build a minimal ADR-018 binary frame for testing.
+
+    Format: <IBBHIIbbH> (20 bytes) matching firmware/esp32-csi-node csi_collector.c
+    """
     header = struct.pack(
-        "<IBIIQBBBB H",
-        MAGIC_HEADER,   # magic
-        1,               # version
-        node_id,         # node_id
-        seq,             # sequence
-        1000,            # timestamp_ms
-        rssi & 0xFF,     # rssi (signed as unsigned byte)
-        0xD0 & 0xFF,     # noise_floor -48
-        6,               # channel
-        20,              # bandwidth
-        num_sub,         # num_subcarriers
+        "<IBBHIIbbH",
+        MAGIC_HEADER,   # magic (I)
+        node_id,         # node_id (B)
+        1,               # num_antennas (B)
+        num_sub,         # num_subcarriers (H)
+        2437,            # freq_mhz (I) -> channel 6
+        seq,             # sequence (I)
+        rssi,            # rssi (b, signed)
+        -48,             # noise_floor (b, signed)
+        0,               # reserved (H)
     )
     csi_bytes = b""
     for i in range(num_sub):

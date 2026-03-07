@@ -10,9 +10,16 @@ from server.config import Settings
 def _build_fake_frame(node_id=1, seq=0):
     num_sub = 56
     header = struct.pack(
-        "<IBIIQBBBB H",
-        MAGIC_HEADER, 1, node_id, seq, 1000,
-        0xD3, 0xD0, 6, 20, num_sub,
+        "<IBBHIIbbH",
+        MAGIC_HEADER,   # magic (I)
+        node_id,         # node_id (B)
+        1,               # num_antennas (B)
+        num_sub,         # num_subcarriers (H)
+        2437,            # freq_mhz (I) -> channel 6
+        seq,             # sequence (I)
+        -45,             # rssi (b, signed)
+        -48,             # noise_floor (b, signed)
+        0,               # reserved (H)
     )
     csi = b""
     for i in range(num_sub):
