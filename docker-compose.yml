@@ -1,0 +1,12 @@
+services:
+  wifi-body:
+    build: .
+    ports:
+      - "8000:8000"      # Dashboard + API
+      - "5005:5005/udp"  # CSI receiver
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+    environment:
+      - HARDWARE_PROFILE=esp32s3
+    restart: unless-stopped

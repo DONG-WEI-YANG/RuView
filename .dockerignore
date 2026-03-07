@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+.git/
+.claude/
+.dw/
+.playwright-mcp/
+_upstream/
+*.png
+*.jpg
+data/synthetic/
+data/real/
+firmware/
+tests/
+docs/
