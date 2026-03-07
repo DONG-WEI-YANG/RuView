@@ -128,6 +128,15 @@ class Settings(BaseSettings):
     fall_threshold: float = 0.8
     fall_alert_cooldown: int = 30  # seconds
 
+    # Storage
+    db_path: str = "data/wifi_body.db"
+
+    # Push notifications (set via env vars)
+    notify_webhook_url: str = ""
+    notify_line_token: str = ""
+    notify_telegram_bot_token: str = ""
+    notify_telegram_chat_id: str = ""
+
     def apply_hardware_profile(self) -> HardwareProfile | None:
         """Apply hardware profile settings, returning the profile used."""
         profile = HARDWARE_PROFILES.get(self.hardware_profile)

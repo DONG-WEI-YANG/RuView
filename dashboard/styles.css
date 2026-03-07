@@ -1223,3 +1223,138 @@ header h1 { font-size: 20px; color: #00ff88; }
 .flash-log-entry.success { color: #00ff88; }
 .flash-log-entry.warning { color: #ffaa33; }
 .flash-log-entry.error { color: #ff4444; }
+
+/* ── Calibration Panel ──────────────────────────────────── */
+.calibration-panel .cal-status-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+.cal-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+}
+.cal-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+}
+.cal-dot.uncalibrated { background: #ff6b35; }
+.cal-dot.calibrated { background: #4ade80; }
+.cal-progress-bar {
+    height: 6px;
+    background: #1a1a3a;
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+.cal-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #4488ff, #00ccff);
+    transition: width 0.3s ease;
+}
+.cal-nodes-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px;
+}
+.cal-node-card {
+    background: #1a1a3a;
+    border: 1px solid #2a2a4a;
+    border-radius: 8px;
+    padding: 12px;
+}
+.cal-node-title {
+    font-weight: 600;
+    color: #4488ff;
+    margin-bottom: 8px;
+    font-size: 14px;
+}
+.cal-node-stat {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    padding: 2px 0;
+    color: #aaa;
+}
+.cal-node-stat b { color: #e0e0e0; }
+
+/* ── Notification Panel ─────────────────────────────────── */
+.notify-channels {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+.notify-channel {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    background: #1a1a3a;
+    border-radius: 6px;
+    font-size: 13px;
+}
+.notify-icon {
+    font-weight: 600;
+    min-width: 80px;
+    color: #e0e0e0;
+}
+.notify-status {
+    color: #888;
+    flex: 1;
+}
+.notify-channel code {
+    font-size: 11px;
+    color: #666;
+}
+
+/* ── OTA Panel ──────────────────────────────────────────── */
+.ota-firmware-list {
+    margin-bottom: 16px;
+}
+.ota-firmware-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    background: #1a1a3a;
+    border-radius: 6px;
+    margin-bottom: 6px;
+}
+.ota-fw-name {
+    flex: 1;
+    font-family: 'Monaco', 'Consolas', monospace;
+    font-size: 13px;
+}
+.ota-fw-size {
+    color: #888;
+    font-size: 12px;
+}
+.ota-steps {
+    padding-left: 20px;
+    font-size: 13px;
+    line-height: 1.8;
+    color: #aaa;
+}
+.ota-steps code {
+    background: #1a1a3a;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 12px;
+}
+.btn-sm {
+    padding: 4px 10px;
+    font-size: 12px;
+    background: #2a2a5a;
+    color: #4488ff;
+    border: 1px solid #3a3a6a;
+    border-radius: 4px;
+    text-decoration: none;
+    cursor: pointer;
+}
+.btn-sm:hover { background: #3a3a6a; }

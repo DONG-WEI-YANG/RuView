@@ -191,12 +191,22 @@ SUMMARY
 | `/api/collect/start?activity=walking` | POST | Start data collection |
 | `/api/collect/stop` | POST | Stop and save recording |
 | `/api/collect/status` | GET | Collection progress |
+| `/api/calibration/start` | POST | Start spatial calibration |
+| `/api/calibration/finish` | POST | Finish calibration + compute distances |
+| `/api/calibration/status` | GET | Calibration progress/results |
+| `/api/history/poses` | GET | Historical pose data (SQLite) |
+| `/api/history/vitals` | GET | Historical vital signs (SQLite) |
+| `/api/history/alerts` | GET | Historical fall alerts (SQLite) |
+| `/api/notifications/status` | GET | Notification channel status |
+| `/api/notifications/test` | POST | Send test fall notification |
+| `/api/ota/firmware` | GET | List OTA firmware binaries |
+| `/api/ota/download/{file}` | GET | Download firmware for ESP32 OTA |
 | `/ws/pose` | WebSocket | Real-time pose + vitals stream |
 
 ## Testing
 
 ```bash
-python -m pytest tests/ -v          # All 125 tests
+python -m pytest tests/ -v          # All 149 tests
 python -m pytest tests/ -k e2e -v   # End-to-end integration only
 ```
 
@@ -223,6 +233,9 @@ wifi-body/
     dataset_download.py # MM-Fi/Wi-Pose download + convert
     real_collector.py   # Real-world CSI + camera data collection
     camera_collector.py # Camera ground truth with rtmlib
+    storage.py          # SQLite persistent storage
+    notifier.py         # Push notifications (webhook/LINE/Telegram)
+    calibration.py      # Spatial calibration for node positions
   dashboard/
     index.html          # Single-page app (7 tabs)
     styles.css          # Dark theme styles
@@ -232,8 +245,46 @@ wifi-body/
   firmware/
     esp32-csi-node/     # ESP-IDF firmware for CSI capture
   models/               # Trained model weights
-  data/                 # Training data (.npz)
-  tests/                # 125 tests (unit + e2e integration)
+  data/                 # Training data (.npz) + wifi_body.db
+  tests/                # 149 tests (unit + e2e integration)
+  .github/workflows/    # CI/CD pipeline
+```
+
+## Fall Alert Notifications
+
+Configure push notifications for fall detection via environment variables:
+
+```bash
+# Webhook (any HTTP endpoint)
+export NOTIFY_WEBHOOK_URL=https://your-server.com/fall-hook
+
+# LINE Notify
+export NOTIFY_LINE_TOKEN=your_line_notify_token
+
+# Telegram Bot
+export NOTIFY_TELEGRAM_BOT_TOKEN=your_bot_token
+export NOTIFY_TELEGRAM_CHAT_ID=your_chat_id
+```
+
+Test notifications from Dashboard > Hardware > Fall Alert Notifications, or via API:
+```bash
+curl -X POST http://localhost:8000/api/notifications/test
+```
+
+## Calibration
+
+Before first use with real hardware, calibrate node positions:
+
+1. Open Dashboard > Hardware > Spatial Calibration
+2. Stand at the centre of the room
+3. Click "Start Calibration" — system records CSI from all nodes for 5 seconds
+4. Results show estimated distance per node based on RSSI path-loss model
+
+Or via API:
+```bash
+curl -X POST http://localhost:8000/api/calibration/start
+# Wait 5 seconds...
+curl -X POST http://localhost:8000/api/calibration/finish
 ```
 
 ## References

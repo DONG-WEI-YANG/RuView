@@ -408,6 +408,59 @@
                     </div>
                 </div>
 
+                <!-- ── Calibration Panel ──────────────────────────── -->
+                <div class="panel calibration-panel">
+                    <h2>Spatial Calibration</h2>
+                    <p class="help-text">Stand at the centre of the room and calibrate node distances. Required for optimal pose accuracy.</p>
+
+                    <div class="cal-status-row">
+                        <div class="cal-indicator" id="cal-indicator">
+                            <span class="cal-dot uncalibrated"></span>
+                            <span id="cal-status-text">Uncalibrated</span>
+                        </div>
+                        <button class="btn btn-primary" id="cal-start-btn">Start Calibration</button>
+                    </div>
+
+                    <div id="cal-progress-section" style="display:none">
+                        <div class="cal-progress-bar">
+                            <div class="cal-progress-fill" id="cal-progress-fill" style="width:0%"></div>
+                        </div>
+                        <p class="help-text" id="cal-progress-text">Stand still at the centre of the room...</p>
+                    </div>
+
+                    <div id="cal-result-section" style="display:none">
+                        <h3 class="sub-heading">Calibration Results</h3>
+                        <div id="cal-nodes-grid" class="cal-nodes-grid">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── Notification Settings ────────────────────────── -->
+                <div class="panel notify-panel">
+                    <h2>Fall Alert Notifications</h2>
+                    <p class="help-text">Configure push notifications for fall detection alerts. Set tokens via environment variables.</p>
+
+                    <div class="notify-channels" id="notify-channels">
+                        <div class="notify-channel">
+                            <span class="notify-icon">Webhook</span>
+                            <span class="notify-status" id="notify-webhook-status">Not configured</span>
+                            <code>NOTIFY_WEBHOOK_URL</code>
+                        </div>
+                        <div class="notify-channel">
+                            <span class="notify-icon">LINE</span>
+                            <span class="notify-status" id="notify-line-status">Not configured</span>
+                            <code>NOTIFY_LINE_TOKEN</code>
+                        </div>
+                        <div class="notify-channel">
+                            <span class="notify-icon">Telegram</span>
+                            <span class="notify-status" id="notify-telegram-status">Not configured</span>
+                            <code>NOTIFY_TELEGRAM_BOT_TOKEN</code>
+                        </div>
+                    </div>
+                    <button class="btn" id="notify-test-btn" disabled>Send Test Notification</button>
+                    <span id="notify-test-result" class="help-text"></span>
+                </div>
+
                 <!-- ── ESP32 Web Flasher ─────────────────────────── -->
                 <div class="panel flash-panel">
                     <h2>ESP32 Firmware Flasher</h2>
@@ -469,6 +522,26 @@
                     <!-- Flash Log -->
                     <div class="flash-log" id="flash-log">
                         <div class="flash-log-entry info">Ready. Select target and connect device.</div>
+                    </div>
+                </div>
+
+                <!-- ── OTA Firmware Update ──────────────────────────── -->
+                <div class="panel ota-panel">
+                    <h2>OTA Firmware Update</h2>
+                    <p class="help-text">Update ESP32 firmware wirelessly via HTTP OTA. Nodes must be connected to the same network.</p>
+
+                    <div class="ota-firmware-list" id="ota-firmware-list">
+                        <span class="help-text">Checking for firmware binaries...</span>
+                    </div>
+
+                    <div class="ota-instructions">
+                        <h3 class="sub-heading">How OTA Works</h3>
+                        <ol class="ota-steps">
+                            <li>Build firmware with OTA partition: <code>idf.py menuconfig</code> &rarr; enable OTA</li>
+                            <li>Place built <code>.bin</code> in <code>firmware/esp32-csi-node/build/</code></li>
+                            <li>ESP32 nodes fetch updates from <code>http://&lt;server-ip&gt;:8000/api/ota/download/&lt;file&gt;</code></li>
+                            <li>Configure OTA URL in firmware <code>sdkconfig</code> or via serial command</li>
+                        </ol>
                     </div>
                 </div>
             </div>
@@ -1471,6 +1544,219 @@
             }).catch(function () {
                 renderProfiles(BUILTIN);
             });
+        })();
+
+        // ── Calibration UI ─────────────────────────────────────
+        (function initCalibration() {
+            var startBtn = document.getElementById("cal-start-btn");
+            var progressSection = document.getElementById("cal-progress-section");
+            var progressFill = document.getElementById("cal-progress-fill");
+            var progressText = document.getElementById("cal-progress-text");
+            var resultSection = document.getElementById("cal-result-section");
+            var nodesGrid = document.getElementById("cal-nodes-grid");
+            var statusText = document.getElementById("cal-status-text");
+            var calDot = document.querySelector(".cal-dot");
+            var pollTimer = null;
+
+            startBtn.addEventListener("click", function () {
+                fetch("/api/calibration/start", { method: "POST" })
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        if (data.status === "calibrating") {
+                            progressSection.style.display = "";
+                            resultSection.style.display = "none";
+                            startBtn.disabled = true;
+                            startBtn.textContent = "Calibrating...";
+                            pollCalibration();
+                        }
+                    })
+                    .catch(function () {
+                        statusText.textContent = "Server unavailable";
+                    });
+            });
+
+            function pollCalibration() {
+                pollTimer = setInterval(function () {
+                    fetch("/api/calibration/status")
+                        .then(function (r) { return r.json(); })
+                        .then(function (data) {
+                            if (data.status === "calibrating") {
+                                var pct = Math.round((data.progress || 0) * 100);
+                                progressFill.style.width = pct + "%";
+                                progressText.textContent = "Collecting... " + (data.samples_collected || 0) + " samples from " + (data.nodes_seen || 0) + " nodes";
+                            } else if (data.status === "complete" || data.last_result) {
+                                clearInterval(pollTimer);
+                                progressSection.style.display = "none";
+                                startBtn.disabled = false;
+                                startBtn.textContent = "Re-calibrate";
+
+                                // Auto-finish if server hasn't
+                                if (data.status === "calibrating") {
+                                    fetch("/api/calibration/finish", { method: "POST" })
+                                        .then(function (r) { return r.json(); })
+                                        .then(showResult);
+                                } else {
+                                    showResult(data.last_result || data);
+                                }
+                            }
+                        });
+                }, 500);
+
+                // Auto-finish after 6 seconds
+                setTimeout(function () {
+                    clearInterval(pollTimer);
+                    fetch("/api/calibration/finish", { method: "POST" })
+                        .then(function (r) { return r.json(); })
+                        .then(function (data) {
+                            progressSection.style.display = "none";
+                            startBtn.disabled = false;
+                            startBtn.textContent = "Re-calibrate";
+                            showResult(data);
+                        })
+                        .catch(function () {
+                            startBtn.disabled = false;
+                            startBtn.textContent = "Start Calibration";
+                        });
+                }, 6000);
+            }
+
+            function showResult(result) {
+                if (!result || !result.nodes) return;
+                resultSection.style.display = "";
+                statusText.textContent = "Calibrated (" + (result.node_count || 0) + " nodes)";
+                calDot.className = "cal-dot calibrated";
+
+                // Clear and populate nodes grid
+                while (nodesGrid.firstChild) nodesGrid.removeChild(nodesGrid.firstChild);
+                var nodeIds = Object.keys(result.nodes);
+                nodeIds.forEach(function (nid) {
+                    var n = result.nodes[nid];
+                    var card = document.createElement("div");
+                    card.className = "cal-node-card";
+
+                    var title = document.createElement("div");
+                    title.className = "cal-node-title";
+                    title.textContent = "Node " + nid;
+                    card.appendChild(title);
+
+                    var stats = [
+                        ["Distance", n.estimated_distance_m + " m"],
+                        ["RSSI", n.mean_rssi + " dBm"],
+                        ["Amplitude", n.mean_amplitude.toFixed(2)],
+                        ["Samples", n.sample_count]
+                    ];
+                    stats.forEach(function (s) {
+                        var row = document.createElement("div");
+                        row.className = "cal-node-stat";
+                        var label = document.createElement("span");
+                        label.textContent = s[0];
+                        var val = document.createElement("b");
+                        val.textContent = s[1];
+                        row.appendChild(label);
+                        row.appendChild(val);
+                        card.appendChild(row);
+                    });
+                    nodesGrid.appendChild(card);
+                });
+            }
+
+            // Check initial status
+            fetch("/api/calibration/status")
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (data.last_result) {
+                        showResult(data.last_result);
+                        startBtn.textContent = "Re-calibrate";
+                    }
+                })
+                .catch(function () {});
+        })();
+
+        // ── Notifications UI ───────────────────────────────────
+        (function initNotifications() {
+            var testBtn = document.getElementById("notify-test-btn");
+            var testResult = document.getElementById("notify-test-result");
+
+            fetch("/api/notifications/status")
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    var channels = data.channels || [];
+                    var webhookEl = document.getElementById("notify-webhook-status");
+                    var lineEl = document.getElementById("notify-line-status");
+                    var telegramEl = document.getElementById("notify-telegram-status");
+
+                    if (channels.indexOf("webhook") >= 0) {
+                        webhookEl.textContent = "Active";
+                        webhookEl.style.color = "#4ade80";
+                    }
+                    if (channels.indexOf("line") >= 0) {
+                        lineEl.textContent = "Active";
+                        lineEl.style.color = "#4ade80";
+                    }
+                    if (channels.indexOf("telegram") >= 0) {
+                        telegramEl.textContent = "Active";
+                        telegramEl.style.color = "#4ade80";
+                    }
+                    if (data.enabled) {
+                        testBtn.disabled = false;
+                    }
+                })
+                .catch(function () {});
+
+            testBtn.addEventListener("click", function () {
+                testBtn.disabled = true;
+                testResult.textContent = "Sending...";
+                fetch("/api/notifications/test", { method: "POST" })
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        testResult.textContent = (data.results || []).join(", ");
+                        testBtn.disabled = false;
+                    })
+                    .catch(function (e) {
+                        testResult.textContent = "Error: " + e;
+                        testBtn.disabled = false;
+                    });
+            });
+        })();
+
+        // ── OTA Firmware List ──────────────────────────────────
+        (function initOTA() {
+            var listEl = document.getElementById("ota-firmware-list");
+            fetch("/api/ota/firmware")
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    while (listEl.firstChild) listEl.removeChild(listEl.firstChild);
+                    var bins = data.firmware || [];
+                    if (bins.length === 0) {
+                        var msg = document.createElement("span");
+                        msg.className = "help-text";
+                        msg.textContent = "No firmware binaries found. Build firmware first.";
+                        listEl.appendChild(msg);
+                        return;
+                    }
+                    bins.forEach(function (fw) {
+                        var row = document.createElement("div");
+                        row.className = "ota-firmware-row";
+                        var name = document.createElement("span");
+                        name.className = "ota-fw-name";
+                        name.textContent = fw.name;
+                        var size = document.createElement("span");
+                        size.className = "ota-fw-size";
+                        size.textContent = (fw.size / 1024).toFixed(0) + " KB";
+                        var link = document.createElement("a");
+                        link.className = "btn btn-sm";
+                        link.href = fw.path;
+                        link.textContent = "Download";
+                        link.setAttribute("download", "");
+                        row.appendChild(name);
+                        row.appendChild(size);
+                        row.appendChild(link);
+                        listEl.appendChild(row);
+                    });
+                })
+                .catch(function () {
+                    listEl.textContent = "Server unavailable";
+                });
         })();
     })();
     </script>
