@@ -26,6 +26,10 @@ def main():
         "--list-profiles", action="store_true",
         help="List available hardware profiles and exit",
     )
+    parser.add_argument(
+        "--port", type=int, default=None,
+        help="API server port (default: 8000)",
+    )
     args = parser.parse_args()
 
     if args.list_profiles:
@@ -51,6 +55,9 @@ def main():
             print(f"Unknown profile '{args.profile}'. Use --list-profiles to see options.")
             raise SystemExit(1)
         settings.hardware_profile = args.profile
+
+    if args.port:
+        settings.api_port = args.port
 
     app = create_app(settings)
     uvicorn.run(app, host=settings.api_host, port=settings.api_port, log_level="info")
