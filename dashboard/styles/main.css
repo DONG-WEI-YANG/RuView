@@ -1,0 +1,136 @@
+/*
+   Taiwan 70-80s Retro Theme
+   Inspiration: Amber monochrome monitors, neon signage, old office tech
+   main.css — custom properties, reset, body, typography, scrollbars, responsive
+*/
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+    --bg-dark: #0a0a0a;
+    --bg-panel: #141414;
+    --text-primary: #ffb000; /* Amber */
+    --text-secondary: #cc8800;
+    --accent-red: #e63946;   /* Traditional Red */
+    --accent-green: #2a9d8f; /* Jade/Phosphor Green */
+    --border-color: #553300;
+    --scanline-color: rgba(18, 16, 16, 0.5);
+}
+
+body {
+    font-family: "Courier New", Courier, monospace; /* Retro terminal font */
+    background: var(--bg-dark);
+    color: var(--text-primary);
+    height: 100vh;
+    overflow: hidden;
+    position: relative;
+}
+
+#app { display: flex; flex-direction: column; height: 100vh; }
+
+/* ── Header ────────────────────────────────────────────── */
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 24px;
+    background: var(--bg-panel);
+    border-bottom: 2px solid var(--border-color);
+    flex-shrink: 0;
+    box-shadow: 0 0 10px rgba(255, 176, 0, 0.1);
+}
+header h1 {
+    font-size: 24px;
+    color: var(--accent-red);
+    text-shadow: 0 0 5px var(--accent-red);
+    letter-spacing: 2px;
+}
+#status-bar { display: flex; gap: 16px; font-size: 14px; align-items: center; }
+
+.status-dot::before {
+    content: "";
+    display: inline-block;
+    width: 10px; height: 10px;
+    border-radius: 0; /* Square pixels */
+    margin-right: 6px;
+    box-shadow: 0 0 5px currentColor;
+}
+.status-dot.online::before { background: var(--accent-green); color: var(--accent-green); }
+.status-dot.offline::before { background: var(--accent-red); color: var(--accent-red); }
+
+/* connection-status (new ES6 module structure) */
+#connection-status.connected { color: var(--accent-green); }
+#connection-status.disconnected { color: var(--accent-red); }
+
+/* ── LIVE/DEMO Badge ───────────────────────────────── */
+.mode-badge {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    padding: 4px 12px;
+    border: 2px solid;
+    text-transform: uppercase;
+}
+.mode-badge.demo {
+    background: #221100;
+    color: var(--text-primary);
+    border-color: var(--text-primary);
+}
+.mode-badge.live {
+    background: #001100;
+    color: var(--accent-green);
+    border-color: var(--accent-green);
+    animation: livePulse 2s infinite;
+}
+
+#render-mode-btn, #toggle-sim-btn {
+    background: #000;
+    color: var(--text-primary);
+    border: 2px solid var(--text-primary);
+    padding: 4px 12px;
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+}
+#render-mode-btn:hover, #toggle-sim-btn:hover {
+    background: var(--text-primary);
+    color: #000;
+    box-shadow: 0 0 10px var(--text-primary);
+}
+
+/* ── Canvas Placeholders ───────────────────────────────── */
+canvas { background: #000; width: 100%; display: block; }
+
+/* ── Scrollbars ────────────────────────────────────────── */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: #000; }
+::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border: 1px solid #000;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--text-primary); }
+
+/* ── Responsive Tablet/Mobile ────────────────────────── */
+@media (max-width: 768px) {
+    header h1 { font-size: 18px; }
+    #status-bar { font-size: 12px; gap: 8px; }
+    #node-count, #fps-counter { display: none; }
+
+    #info-panel {
+        width: 100%;
+        height: auto;
+        flex-direction: row;
+        border-left: none;
+        border-top: 2px solid var(--border-color);
+        overflow-x: auto;
+        padding: 8px;
+    }
+    .card { min-width: 140px; }
+
+    #tab-viewer main { flex-direction: column; }
+    #vitals-hud { top: 10px; left: 10px; right: 10px; }
+    .hud-card { min-width: auto; }
+}

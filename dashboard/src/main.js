@@ -1,13 +1,54 @@
 // dashboard/src/main.js
 /**
  * WiFi Body Dashboard — entry point.
- * Initializes EventBus, WebSocket client, demo data generator, and tab router.
+ * Registers tab controllers, builds the tab bar, connects WebSocket,
+ * and starts the demo data generator.
  */
 import { bus } from './events.js';
-import { init as initDemoData } from './simulation/demo-data.js';
+import { WsClient } from './connection/ws-client.js';
+import { registerTab, switchTab, getRegisteredTabs } from './tabs/tab-manager.js';
+import { init as startDemoData } from './simulation/demo-data.js';
+import viewer from './tabs/viewer.js';
+import dashboard from './tabs/dashboard.js';
+import hardware from './tabs/hardware.js';
+import demo from './tabs/demo.js';
+import sensing from './tabs/sensing.js';
+import architecture from './tabs/architecture.js';
+import performance from './tabs/performance.js';
+
+// Register all tabs
+[viewer, dashboard, hardware, demo, sensing, architecture, performance]
+  .forEach(registerTab);
+
+// Build tab bar
+const tabBar = document.getElementById('tab-bar');
+getRegisteredTabs().forEach((tab) => {
+  const btn = document.createElement('button');
+  btn.textContent = tab.label;
+  btn.dataset.tab = tab.id;
+  btn.addEventListener('click', () => switchTab(tab.id));
+  tabBar.appendChild(btn);
+});
+
+// Highlight active tab
+bus.on('tab:changed', (tabId) => {
+  tabBar.querySelectorAll('button').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.tab === tabId);
+  });
+});
+
+// Connect WebSocket
+const wsUrl = `ws://${location.hostname}:${location.port || 8000}/ws/pose`;
+const client = new WsClient(wsUrl);
+client.connect();
+
+// Connection status indicator
+const statusEl = document.getElementById('connection-status');
+bus.on('ws:connected', () => { statusEl.textContent = 'Connected'; statusEl.className = 'connected'; });
+bus.on('ws:disconnected', () => { statusEl.textContent = 'Reconnecting...'; statusEl.className = 'disconnected'; });
 
 // Start demo data generator (auto-stops when WebSocket connects)
-initDemoData();
+startDemoData();
 
-console.log('WiFi Body Dashboard initialized');
-console.log('EventBus ready:', bus);
+// Default to viewer tab
+switchTab('viewer');

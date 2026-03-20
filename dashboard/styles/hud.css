@@ -1,0 +1,253 @@
+/*
+   hud.css — HUD overlay, vital sign displays, confidence bars, side panel, node list
+*/
+
+/* ── Vitals HUD ────────────────────────────────────────── */
+#vitals-hud {
+    position: absolute;
+    top: 20px; left: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    pointer-events: none;
+}
+.hud-card {
+    background: rgba(0, 0, 0, 0.8);
+    border: 2px solid var(--text-primary);
+    padding: 10px;
+    border-radius: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 0 10px rgba(255, 176, 0, 0.2);
+    min-width: 260px;
+}
+.hud-icon {
+    font-size: 24px;
+    color: var(--text-primary);
+    width: 32px; text-align: center;
+}
+.hud-info {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+}
+.hud-label {
+    font-size: 10px;
+    color: var(--text-secondary);
+    letter-spacing: 1px;
+}
+.hud-value {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-primary);
+    text-shadow: 0 0 5px var(--text-primary);
+}
+.hud-conf {
+    height: 4px;
+    background: #332200;
+    margin-top: 4px;
+    width: 100%;
+}
+.hud-conf-fill {
+    height: 100%;
+    background: var(--text-primary);
+    width: 0%;
+    transition: width 0.2s;
+    box-shadow: 0 0 5px var(--text-primary);
+}
+.hud-conf-fill.heart { background: var(--accent-red); box-shadow: 0 0 5px var(--accent-red); }
+.hud-conf-fill.stress { background: var(--accent-red); box-shadow: 0 0 5px var(--accent-red); }
+
+/* ── Side Panel ────────────────────────────────────────── */
+#info-panel {
+    width: 280px;
+    background: var(--bg-panel);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    border-left: 2px solid var(--border-color);
+}
+
+#fall-status { color: var(--accent-green); }
+#fall-status.alert-danger { color: var(--accent-red); animation: blink 1s infinite; }
+
+#node-list { list-style: none; }
+#node-list li {
+    font-size: 12px;
+    color: var(--text-secondary);
+    padding: 4px 0;
+    border-bottom: 1px dashed #332200;
+}
+
+/* ── Hardware Config Form ──────────────────────────────── */
+.config-group {
+    margin-bottom: 24px;
+    border-bottom: 1px dashed var(--border-color);
+    padding-bottom: 16px;
+}
+.config-group:last-child { border-bottom: none; }
+
+.config-group label {
+    display: block;
+    font-size: 14px;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+    font-weight: 700;
+}
+
+.help-text {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+    line-height: 1.4;
+}
+
+.input-row {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 12px;
+}
+.input-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+.input-wrap span {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+}
+input[type="number"], select {
+    background: #000;
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 8px;
+    font-family: inherit;
+    font-size: 14px;
+    width: 100%;
+}
+input[type="number"]:focus, select:focus {
+    border-color: var(--text-primary);
+    outline: none;
+    box-shadow: 0 0 5px var(--text-primary);
+}
+
+.action-btn {
+    background: var(--bg-panel);
+    border: 1px solid var(--text-primary);
+    color: var(--text-primary);
+    padding: 8px 16px;
+    cursor: pointer;
+    font-family: inherit;
+    text-transform: uppercase;
+    font-size: 12px;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    margin-top: 8px;
+}
+.action-btn:hover {
+    background: var(--text-primary);
+    color: #000;
+}
+
+/* ── Wizard Styles ─────────────────────────────────────── */
+.wizard-steps {
+    display: flex;
+    margin-bottom: 24px;
+    border-bottom: 1px solid var(--border-color);
+}
+.wizard-steps .step {
+    flex: 1;
+    text-align: center;
+    padding: 12px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    border-bottom: 2px solid transparent;
+    transition: all 0.3s;
+}
+.wizard-steps .step.active {
+    color: var(--text-primary);
+    border-bottom-color: var(--text-primary);
+    font-weight: 700;
+}
+.wizard-content {
+    display: none;
+    animation: fadeIn 0.3s;
+}
+.wizard-content.active {
+    display: block;
+}
+.wizard-heading {
+    color: var(--accent-green);
+    margin-bottom: 16px;
+    font-size: 16px;
+}
+.wizard-nav {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px dashed var(--border-color);
+}
+.signal-list {
+    background: #000;
+    border: 1px solid var(--border-color);
+    padding: 12px;
+    margin-bottom: 16px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+.signal-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px;
+    border-bottom: 1px solid #222;
+    font-family: monospace;
+}
+.signal-item.weak { color: var(--accent-red); }
+.signal-item.good { color: var(--accent-green); }
+.signal-item.loading { color: var(--text-secondary); font-style: italic; }
+
+.cal-status-box {
+    background: #000;
+    border: 1px solid var(--border-color);
+    padding: 16px;
+    text-align: center;
+    margin-bottom: 16px;
+}
+#wizard-cal-status {
+    font-size: 24px;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+}
+
+/* ── Node Table ────────────────────────────────────────── */
+#node-config-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 12px;
+}
+#node-config-table th {
+    text-align: left;
+    font-size: 11px;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border-color);
+    padding: 4px 8px;
+}
+#node-config-table td {
+    padding: 4px;
+    border-bottom: 1px dashed #222;
+}
+#node-config-table input {
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid #333;
+    color: var(--text-primary);
+    padding: 4px;
+    width: 80px;
+}
+#node-config-table input:focus {
+    border-bottom-color: var(--text-primary);
+}

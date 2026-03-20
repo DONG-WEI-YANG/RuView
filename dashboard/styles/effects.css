@@ -1,0 +1,65 @@
+/*
+   effects.css — CRT scanline effect, neon glow, pulse animations, transitions
+*/
+
+/* ── CRT Scanline Effect Overlay (body::after) ─────────── */
+body::after {
+    content: " ";
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+    background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+    z-index: 999;
+    background-size: 100% 2px, 3px 100%;
+    pointer-events: none;
+}
+
+/* ── CRT Overlay element (alternative div-based approach) ─ */
+.crt-overlay {
+    pointer-events: none;
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 999;
+    background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%),
+                linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+    background-size: 100% 2px, 3px 100%;
+}
+
+/* ── Animations ────────────────────────────────────────── */
+@keyframes livePulse {
+    0%, 100% { box-shadow: 0 0 4px rgba(42, 157, 143, 0.3); }
+    50% { box-shadow: 0 0 12px rgba(42, 157, 143, 0.6); }
+}
+
+@keyframes blink { 50% { opacity: 0.5; } }
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scanline {
+    0% { top: -100%; }
+    100% { top: 100%; }
+}
+
+/* ── Neon Glow Utilities ───────────────────────────────── */
+.glow-amber {
+    text-shadow: 0 0 5px var(--text-primary), 0 0 10px var(--text-primary);
+}
+.glow-red {
+    text-shadow: 0 0 5px var(--accent-red), 0 0 10px var(--accent-red);
+}
+.glow-green {
+    text-shadow: 0 0 5px var(--accent-green), 0 0 10px var(--accent-green);
+}
+.glow-border-amber {
+    box-shadow: 0 0 8px rgba(255, 176, 0, 0.4);
+}
+.glow-border-green {
+    box-shadow: 0 0 8px rgba(42, 157, 143, 0.4);
+}
