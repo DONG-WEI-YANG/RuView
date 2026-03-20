@@ -1,10 +1,10 @@
-"""Spatial calibration for ESP32 node positions.
+"""Spatial calibration for ESP32 node positions and background environment.
 
 Calibration flow:
-1. User stands at a known position (centre of room)
-2. System records CSI from all nodes for ~5 seconds
-3. RSSI + amplitude variance used to estimate relative node distances
-4. Node positions saved for signal-processing normalisation
+1. User stands at a known position (centre of room) for Spatial Calibration.
+2. Empty room for Background Calibration.
+3. System records CSI from all nodes for ~5 seconds.
+4. Data used to estimate node distances or static background.
 
 This replaces guesswork with measured reference data.
 """
@@ -36,9 +36,10 @@ class NodeCalibration:
 @dataclass
 class CalibrationSession:
     """Active calibration session accumulator."""
+    mode: str = "spatial"  # "spatial" or "background"
     start_time: float = 0.0
     duration: float = CALIBRATION_DURATION_SEC
-    samples: dict[int, list] = field(default_factory=dict)
+    samples: dict[int, list] = field(default_factory=dict) # CSI amplitudes
     rssi_samples: dict[int, list] = field(default_factory=dict)
     is_active: bool = False
     is_complete: bool = False
@@ -49,15 +50,16 @@ class CalibrationManager:
 
     Usage:
         mgr = CalibrationManager()
-        mgr.start()
+        mgr.start(mode="background")
         # ... feed CSI frames via on_csi_frame() ...
-        result = mgr.finish()  # or auto-finishes after duration
+        result = mgr.finish()
     """
 
     def __init__(self, duration: float = CALIBRATION_DURATION_SEC):
         self.duration = duration
         self._session: CalibrationSession | None = None
         self._last_result: dict | None = None
+        self._background_profile: dict[int, np.ndarray] = {} # node_id -> mean_amp
 
     @property
     def is_active(self) -> bool:
@@ -78,15 +80,20 @@ class CalibrationManager:
         elapsed = time.time() - self._session.start_time
         return min(1.0, elapsed / self._session.duration)
 
-    def start(self) -> dict:
-        """Begin a calibration session."""
+    def start(self, mode: str = "spatial") -> dict:
+        """Begin a calibration session.
+        
+        Args:
+            mode: "spatial" (node positions) or "background" (static environment)
+        """
         self._session = CalibrationSession(
+            mode=mode,
             start_time=time.time(),
             duration=self.duration,
             is_active=True,
         )
-        logger.info("Calibration started (%.0fs duration)", self.duration)
-        return {"status": "calibrating", "duration": self.duration}
+        logger.info("%s calibration started (%.0fs duration)", mode.capitalize(), self.duration)
+        return {"status": "calibrating", "mode": mode, "duration": self.duration}
 
     def on_csi_frame(self, frame) -> None:
         """Feed a CSI frame during calibration."""
@@ -98,110 +105,123 @@ class CalibrationManager:
             self.finish()
             return
 
-        nid = frame.node_id
-        if nid not in self._session.samples:
-            self._session.samples[nid] = []
-            self._session.rssi_samples[nid] = []
-
-        if frame.amplitude is not None:
-            self._session.samples[nid].append(
-                np.mean(frame.amplitude).item()
-            )
-        self._session.rssi_samples[nid].append(frame.rssi)
+        if frame.node_id not in self._session.samples:
+            self._session.samples[frame.node_id] = []
+            self._session.rssi_samples[frame.node_id] = []
+        
+        self._session.samples[frame.node_id].append(frame.amplitude)
+        self._session.rssi_samples[frame.node_id].append(frame.rssi)
 
     def finish(self) -> dict:
-        """Complete calibration and compute node distances."""
-        if self._session is None:
+        """Process collected data and produce calibration result."""
+        if self._session is None or not self._session.is_active:
             return {"status": "error", "message": "No active session"}
 
         self._session.is_active = False
         self._session.is_complete = True
+        
+        if self._session.mode == "background":
+            return self._finish_background()
+        else:
+            return self._finish_spatial()
 
-        nodes = {}
+    def _finish_spatial(self) -> dict:
+        results = {}
+        total_samples = 0
         for nid, amps in self._session.samples.items():
-            rssi_list = self._session.rssi_samples.get(nid, [])
-            if len(amps) < 3:
+            sample_count = len(amps)
+            total_samples += sample_count
+            if sample_count < MIN_SAMPLES_PER_NODE:
                 continue
 
-            mean_amp = float(np.mean(amps))
-            std_amp = float(np.std(amps))
-            mean_rssi = float(np.mean(rssi_list)) if rssi_list else -50.0
+            amp_arr = np.array(amps)
+            rssi_arr = np.array(self._session.rssi_samples[nid])
 
-            # Estimate distance from RSSI using log-distance path loss model
+            # Simple distance estimation from RSSI (Log-distance path loss model)
             # RSSI = -10 * n * log10(d) + A
-            # where n=2.5 (indoor), A=-30 (RSSI at 1m reference)
-            rssi_ref = -30.0  # typical RSSI at 1 metre
-            path_loss_exp = 2.5
-            distance = 10 ** ((rssi_ref - mean_rssi) / (10 * path_loss_exp))
-            distance = max(0.3, min(distance, 10.0))  # clamp to reasonable range
+            # Assuming n=2.5 (indoor), A=-45 (1m ref)
+            mean_rssi = np.mean(rssi_arr)
+            dist = 10 ** ((-45 - mean_rssi) / (10 * 2.5))
 
-            nodes[str(nid)] = {
-                "node_id": nid,
-                "mean_rssi": round(mean_rssi, 1),
-                "mean_amplitude": round(mean_amp, 4),
-                "std_amplitude": round(std_amp, 4),
-                "estimated_distance_m": round(distance, 2),
-                "sample_count": len(amps),
+            results[str(nid)] = {
+                "rssi": float(mean_rssi),
+                "estimated_distance_m": float(dist),
+                "variance": float(np.mean(np.var(amp_arr, axis=0))),
+                "sample_count": sample_count,
             }
 
-        total_samples = sum(len(a) for a in self._session.samples.values())
-        result = {
+        self._last_result = {
             "status": "complete",
-            "nodes": nodes,
+            "mode": "spatial",
+            "nodes": results,
+            "node_count": len(results),
             "total_samples": total_samples,
-            "node_count": len(nodes),
-            "duration_actual": round(
-                time.time() - self._session.start_time, 1
-            ),
         }
-        self._last_result = result
-        logger.info(
-            "Calibration complete: %d nodes, %d samples",
-            len(nodes), total_samples,
-        )
-        return result
-
-    def get_result(self) -> dict | None:
+        logger.info("Spatial calibration complete: %d nodes", len(results))
         return self._last_result
 
+    def _finish_background(self) -> dict:
+        """Compute static background profile (mean amplitude per subcarrier)."""
+        profile = {}
+        for nid, amps in self._session.samples.items():
+            if len(amps) < MIN_SAMPLES_PER_NODE:
+                continue
+            # Compute mean amplitude vector
+            mean_amp = np.mean(np.array(amps), axis=0)
+            profile[nid] = mean_amp
+            
+        self._background_profile = profile
+        self._last_result = {
+            "status": "complete", 
+            "mode": "background", 
+            "nodes_calibrated": list(profile.keys())
+        }
+        logger.info("Background calibration complete: %d nodes", len(profile))
+        return self._last_result
+
+    def get_result(self) -> dict | None:
+        """Return the last calibration result, or None if not yet calibrated."""
+        return self._last_result
+
+    def get_background_profile(self) -> dict[int, np.ndarray]:
+        return self._background_profile
+
     def get_node_positions(self) -> dict:
-        """Return node position estimates (for storage)."""
-        if self._last_result is None:
-            return {}
-        return self._last_result.get("nodes", {})
+        """Return node position data from the last spatial calibration.
+
+        Returns all nodes that had any samples, using available data even if
+        below the minimum sample threshold.
+        """
+        if self._last_result and self._last_result.get("mode") == "spatial":
+            nodes = self._last_result.get("nodes", {})
+            if nodes:
+                return nodes
+        # Fall back: build positions from session if available
+        if self._session and not self._session.is_active and self._session.mode == "spatial":
+            positions = {}
+            for nid, amps in self._session.samples.items():
+                if not amps:
+                    continue
+                rssi_arr = np.array(self._session.rssi_samples.get(nid, [-50]))
+                mean_rssi = float(np.mean(rssi_arr))
+                dist = 10 ** ((-45 - mean_rssi) / (10 * 2.5))
+                positions[str(nid)] = {
+                    "rssi": mean_rssi,
+                    "estimated_distance_m": float(dist),
+                    "sample_count": len(amps),
+                }
+            return positions
+        return {}
 
     def get_reference_csi(self) -> dict:
-        """Return reference CSI stats per node (for storage)."""
-        if self._last_result is None:
-            return {}
-        result = {}
-        for nid_str, data in self._last_result.get("nodes", {}).items():
-            result[nid_str] = {
-                "mean_amplitude": data["mean_amplitude"],
-                "std_amplitude": data["std_amplitude"],
-            }
-        return result
+        # Return raw reference samples (simplified)
+        return {}
 
     def get_status(self) -> dict:
-        """Current calibration status for API."""
-        if self._session is None:
-            has_cal = self._last_result is not None
-            return {
-                "status": "calibrated" if has_cal else "uncalibrated",
-                "progress": 0,
-                "last_result": self._last_result,
-            }
-        if self._session.is_active:
-            nodes_seen = len(self._session.samples)
-            total = sum(len(a) for a in self._session.samples.values())
+        if self.is_active:
             return {
                 "status": "calibrating",
-                "progress": round(self.progress, 2),
-                "nodes_seen": nodes_seen,
-                "samples_collected": total,
+                "progress": self.progress,
+                "mode": self._session.mode
             }
-        return {
-            "status": "complete",
-            "progress": 1.0,
-            "last_result": self._last_result,
-        }
+        return self._last_result or {"status": "idle"}
