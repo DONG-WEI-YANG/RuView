@@ -6,13 +6,15 @@
  *   body-mesh    (SMPL wireframe surface)
  *   room         (floor, grid, walls, node markers, receiver)
  *
- * Also manages render-mode cycling (mesh / skeleton / both).
+ * Also manages render-mode cycling (mesh / skeleton / both)
+ * and hosts the HUD overlay for vital signs on the 3D view.
  */
 import { bus } from '../events.js';
 import { initScene } from '../scene/three-setup.js';
 import { createSkeleton } from '../scene/skeleton.js';
 import { createBodyMesh } from '../scene/body-mesh.js';
 import { createRoom } from '../scene/room.js';
+import * as hud from '../vitals/hud.js';
 
 let ctx = null;       // SceneContext from three-setup
 let skeleton = null;
@@ -77,7 +79,10 @@ export default {
       if (e.key === 'm' || e.key === 'M') cycleRenderMode();
     });
 
-    console.log('Viewer tab initialized (ES6 scene modules)');
+    // Initialize vital-signs HUD overlay (renders on top of 3D view)
+    hud.init();
+
+    console.log('Viewer tab initialized (ES6 scene modules + HUD)');
   },
 
   activate() {
@@ -96,6 +101,7 @@ export default {
   },
 
   dispose() {
+    hud.dispose();
     if (skeleton) { skeleton.dispose(); skeleton = null; }
     if (bodyMesh) { bodyMesh.dispose(); bodyMesh = null; }
     if (room) { room.dispose(); room = null; }
