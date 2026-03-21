@@ -141,11 +141,18 @@ shareBtn.addEventListener('click', () => {
   overlay.appendChild(box);
   document.body.appendChild(overlay);
 
-  // Fetch server LAN IP and generate QR
+  // Fetch server LAN IP and generate QR — prefer mDNS URL
   fetch('/api/network').then(r => r.json()).then(data => {
-    const url = (data.urls && data.urls[0]) || location.href;
+    const mdns = data.mdns || '';
+    const lan = (data.urls && data.urls[0]) || location.href;
+    const url = mdns || lan;
     urlText.textContent = url;
-    // Use a public QR API for the image (no extra dependency)
+    if (mdns && lan !== mdns) {
+      const altText = document.createElement('div');
+      altText.textContent = 'or: ' + lan;
+      altText.style.cssText = 'color:#666;font-size:11px;margin-top:4px;font-family:monospace';
+      urlText.after(altText);
+    }
     qrImg.src = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(url);
     qrImg.alt = url;
   }).catch(() => {

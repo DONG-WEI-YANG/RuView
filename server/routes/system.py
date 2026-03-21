@@ -36,7 +36,8 @@ async def network_info(request: Request):
     ips = list(dict.fromkeys(ips))
     port = request.url.port or 8000
     urls = [f"http://{ip}:{port}/dashboard/" for ip in ips]
-    return {"ips": ips, "port": port, "urls": urls, "hostname": socket.gethostname()}
+    mdns_url = f"http://wifi-body.local:{port}/dashboard/"
+    return {"ips": ips, "port": port, "urls": urls, "mdns": mdns_url, "hostname": socket.gethostname()}
 
 
 @router.get("/api/status")

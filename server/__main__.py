@@ -43,7 +43,33 @@ def _print_qr(url: str) -> None:
         pass
 
 
-def _print_banner(port: int, simulate: bool) -> None:
+def _start_mdns(port: int) -> object | None:
+    """Register wifi-body.local via mDNS/Zeroconf so tablets can find us."""
+    try:
+        from zeroconf import Zeroconf, ServiceInfo
+        ips = _get_local_ips()
+        if not ips:
+            return None
+        import socket as _sock
+        addresses = [_sock.inet_aton(ip) for ip in ips]
+        info = ServiceInfo(
+            "_http._tcp.local.",
+            "WiFi Body._http._tcp.local.",
+            addresses=addresses,
+            port=port,
+            properties={"path": "/dashboard/"},
+            server="wifi-body.local.",
+        )
+        zc = Zeroconf()
+        zc.register_service(info)
+        return zc
+    except ImportError:
+        return None
+    except Exception:
+        return None
+
+
+def _print_banner(port: int, simulate: bool, mdns_ok: bool) -> None:
     mode = "SIMULATION" if simulate else "REAL HARDWARE"
     ips = _get_local_ips()
     primary_ip = ips[0] if ips else "localhost"
@@ -54,6 +80,8 @@ def _print_banner(port: int, simulate: bool) -> None:
     print(f"   WiFi Body — {mode} MODE")
     print("  ==========================================")
     print()
+    if mdns_ok:
+        print(f"   mDNS:       http://wifi-body.local:{port}/dashboard/")
     print(f"   Dashboard:  {url}")
     for ip in ips[1:]:
         print(f"               http://{ip}:{port}/dashboard/")
@@ -119,8 +147,14 @@ def main():
         settings.simulate = True
 
     app = create_app(settings)
-    _print_banner(settings.api_port, settings.simulate)
-    uvicorn.run(app, host=settings.api_host, port=settings.api_port, log_level="info")
+    zc = _start_mdns(settings.api_port)
+    _print_banner(settings.api_port, settings.simulate, mdns_ok=zc is not None)
+    try:
+        uvicorn.run(app, host=settings.api_host, port=settings.api_port, log_level="info")
+    finally:
+        if zc:
+            zc.unregister_all_services()
+            zc.close()
 
 
 if __name__ == "__main__":
