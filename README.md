@@ -45,6 +45,14 @@ python -m server --list-profiles
 python -m server --profile tplink_n750
 ```
 
+### Option D: Simulation Mode (No hardware)
+
+If you don't have ESP32 nodes yet, you can run the server in simulation mode. This generates synthetic WiFi CSI signals and skeleton poses for demo purposes.
+
+```bash
+python -m server --simulate
+```
+
 ## Hardware Setup
 
 ### Bill of Materials

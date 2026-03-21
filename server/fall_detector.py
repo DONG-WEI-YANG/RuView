@@ -23,7 +23,7 @@ class FallDetector:
         # Standing reference height; estimated from first few frames
         self._ref_height: float | None = None
 
-    def update(self, joints: np.ndarray):
+    def update(self, joints: np.ndarray, vitals: dict | None = None):
         self._history.append(joints.copy())
         if len(self._history) > 30:
             self._history.pop(0)
@@ -37,6 +37,18 @@ class FallDetector:
         if self._ref_height is None or (not self.is_fallen and head_h > self._ref_height):
             self._ref_height = head_h
         confidence = self._compute_fall_confidence()
+        
+        # Dual Verification: Cross-check with vital signs if available
+        if confidence >= self.threshold and vitals:
+            # If breathing is normal and stable, reduce confidence (likely false positive)
+            # e.g., person lying down on couch
+            if vitals.get("breathing_bpm", 0) > 10 and vitals.get("stress_index", 0) < 50:
+                # Reduce confidence slightly but don't ignore completely
+                confidence *= 0.8
+            # If vitals show distress (apnea, high stress), boost confidence
+            elif vitals.get("stress_index", 0) > 80:
+                confidence = min(1.0, confidence * 1.2)
+
         if confidence >= self.threshold:
             if not self.is_fallen:
                 # Transition to fallen

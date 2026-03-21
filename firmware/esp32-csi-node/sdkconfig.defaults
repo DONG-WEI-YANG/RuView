@@ -1,0 +1,20 @@
+# WiFi Body CSI Node — Build defaults
+CONFIG_IDF_TARGET="esp32s3"
+
+# WiFi credentials
+CONFIG_CSI_WIFI_SSID="Xiaomi 14 Ultra Ti"
+CONFIG_CSI_WIFI_PASSWORD="1234567890"
+CONFIG_CSI_WIFI_CHANNEL=6
+
+# Aggregator target
+CONFIG_CSI_TARGET_IP="10.85.200.216"
+CONFIG_CSI_TARGET_PORT=5005
+
+# Node ID (will be overridden per-device)
+CONFIG_CSI_NODE_ID=1
+
+# Partition table — include NVS
+CONFIG_PARTITION_TABLE_SINGLE_APP=y
+
+# Flash size
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
