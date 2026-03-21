@@ -21,6 +21,24 @@ async def root():
     return {"name": "wifi-body", "version": "0.2.0"}
 
 
+@router.get("/api/network")
+async def network_info(request: Request):
+    """Return server's LAN IPs so tablets/phones can discover the dashboard URL."""
+    import socket
+    ips = []
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ip = info[4][0]
+            if not ip.startswith("127."):
+                ips.append(ip)
+    except Exception:
+        pass
+    ips = list(dict.fromkeys(ips))
+    port = request.url.port or 8000
+    urls = [f"http://{ip}:{port}/dashboard/" for ip in ips]
+    return {"ips": ips, "port": port, "urls": urls, "hostname": socket.gethostname()}
+
+
 @router.get("/api/status")
 async def status(container: ServiceContainer = Depends(get_container)):
     s = container.settings

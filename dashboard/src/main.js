@@ -100,5 +100,58 @@ bus.on('ws:disconnected', () => {
 
 // Don't auto-start demo data — wait for server connection to decide
 
+// ── Share / QR code for tablet connection ──────────────────
+const shareBtn = document.createElement('button');
+shareBtn.id = 'share-btn';
+shareBtn.textContent = '📱';
+shareBtn.title = 'Connect tablet';
+shareBtn.style.cssText = 'background:transparent;border:1px solid #333;color:#888;cursor:pointer;font-size:16px;padding:4px 8px;margin-left:8px';
+document.getElementById('app-header').appendChild(shareBtn);
+
+shareBtn.addEventListener('click', () => {
+  const existing = document.getElementById('qr-overlay');
+  if (existing) { existing.remove(); return; }
+
+  const overlay = document.createElement('div');
+  overlay.id = 'qr-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:999;display:flex;align-items:center;justify-content:center;cursor:pointer';
+  overlay.addEventListener('click', () => overlay.remove());
+
+  const box = document.createElement('div');
+  box.style.cssText = 'text-align:center;padding:24px';
+
+  const title = document.createElement('div');
+  title.textContent = 'Scan to connect tablet';
+  title.style.cssText = 'color:#ccc;font-size:16px;margin-bottom:16px';
+  box.appendChild(title);
+
+  const qrImg = document.createElement('img');
+  qrImg.style.cssText = 'width:200px;height:200px;background:#fff;padding:8px;border-radius:4px';
+  box.appendChild(qrImg);
+
+  const urlText = document.createElement('div');
+  urlText.style.cssText = 'color:var(--accent-green,#0f0);font-size:13px;margin-top:12px;font-family:monospace;user-select:all';
+  box.appendChild(urlText);
+
+  const hint = document.createElement('div');
+  hint.textContent = 'Tap anywhere to close';
+  hint.style.cssText = 'color:#555;font-size:11px;margin-top:12px';
+  box.appendChild(hint);
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+
+  // Fetch server LAN IP and generate QR
+  fetch('/api/network').then(r => r.json()).then(data => {
+    const url = (data.urls && data.urls[0]) || location.href;
+    urlText.textContent = url;
+    // Use a public QR API for the image (no extra dependency)
+    qrImg.src = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(url);
+    qrImg.alt = url;
+  }).catch(() => {
+    urlText.textContent = location.href;
+  });
+});
+
 // Default to viewer tab
 switchTab('viewer');
