@@ -85,6 +85,7 @@
     position: relative;
     opacity: 0;
     transition: opacity 0.2s ease-in-out;
+    min-height: 0; /* allow flex children to shrink and scroll */
 }
 .tab-panel.active {
     display: flex;
@@ -119,6 +120,8 @@
     overflow-y: auto;
     width: 100%;
     padding: 24px;
+    flex: 1;
+    min-height: 0; /* critical: allows scroll in flex container */
 }
 .panel {
     background: var(--bg-panel);
