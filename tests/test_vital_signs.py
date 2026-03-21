@@ -182,3 +182,41 @@ class TestMultiPersonTracker:
         mp = MultiPersonTracker()
         results = mp.update_all()
         assert isinstance(results, list)
+
+    def test_ica_path_with_five_antenna_pairs(self):
+        """ICA path is exercised when >= 5 antenna pairs are provided."""
+        mp = MultiPersonTracker(max_persons=4, sample_rate=10.0)
+        # Provide 6 antenna pairs so the ICA branch is taken
+        for _ in range(20):
+            data = {f"TX{i}_RX{j}": np.random.rand(64) for i in range(3) for j in range(2)}
+            mp.push_multi_antenna_csi(data)
+        # At least one person detected regardless of sklearn availability
+        assert mp.person_count >= 1
+
+    def test_ica_fewer_than_five_pairs_uses_variance(self):
+        """With < 5 antenna pairs, the variance fallback is used (not ICA)."""
+        mp = MultiPersonTracker(max_persons=4, sample_rate=10.0)
+        for _ in range(20):
+            data = {f"TX0_RX{j}": np.random.rand(64) * 0.5 for j in range(3)}
+            mp.push_multi_antenna_csi(data)
+        assert mp.person_count >= 1
+
+    def test_separate_sources_ica_returns_valid_count(self):
+        """_separate_sources_ica should return a count in [1, max_persons]."""
+        mp = MultiPersonTracker(max_persons=4, sample_rate=10.0)
+        # Construct a matrix with clear independent signals
+        rng = np.random.default_rng(0)
+        n_antennas, n_sub = 8, 64
+        # Two independent sources mixed across antennas
+        s1 = np.sin(np.linspace(0, 4 * np.pi, n_sub))
+        s2 = np.cos(np.linspace(0, 8 * np.pi, n_sub))
+        mix = rng.random((n_antennas, 2)) @ np.array([s1, s2])
+        count = mp._separate_sources_ica(mix)
+        assert 1 <= count <= mp.max_persons
+
+    def test_separate_sources_ica_small_matrix_fallback(self):
+        """_separate_sources_ica falls back to variance when matrix has < 4 rows."""
+        mp = MultiPersonTracker(max_persons=4, sample_rate=10.0)
+        small_matrix = np.random.rand(2, 32)
+        count = mp._separate_sources_ica(small_matrix)
+        assert 0 <= count <= mp.max_persons

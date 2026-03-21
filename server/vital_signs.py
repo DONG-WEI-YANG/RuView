@@ -54,6 +54,43 @@ class VitalSignsExtractor:
         if len(self.csi_buffer) > self.window_size:
             self.csi_buffer.pop(0)
 
+    def _estimate_person_count(self, csi_amplitude: np.ndarray):
+        """Estimate number of people from total CSI variance/energy.
+        
+        Heuristic:
+        - 1 Person: Variance concentrated in specific subcarriers (Fresnel zones)
+        - >1 Person: Variance spread across more subcarriers + higher total energy
+        """
+        # Calculate variance across time window for all subcarriers
+        # csi_amplitude shape: (subcarriers,) - this is single frame
+        # We need history. Use self.csi_buffer
+        if len(self.csi_buffer) < int(self.fs * 2):
+            return 0
+            
+        # (Time, Subcarriers)
+        history = np.array(self.csi_buffer[-int(self.fs * 2):])
+        
+        # Variance of each subcarrier over time
+        variances = np.var(history, axis=0)
+        
+        # Total energy of variance (sum of variances)
+        total_energy = np.sum(variances)
+        
+        # Entropy of variance distribution (measure of spread)
+        # Normalize to probability distribution
+        p = variances / (np.sum(variances) + 1e-10)
+        entropy = -np.sum(p * np.log2(p + 1e-10))
+        
+        # Thresholds (need calibration)
+        if total_energy < 0.05:
+            return 0 # Empty
+        elif total_energy < 0.5:
+            return 1
+        elif entropy > 4.5: # High spread
+            return 2
+        else:
+            return 1 # Default to 1 if unsure
+
     def update(self) -> dict:
         """Compute vitals from current buffer. Call at ~1-2 Hz."""
         if len(self.csi_buffer) < int(self.fs * 5):
@@ -309,6 +346,10 @@ class VitalSignsExtractor:
         else:
             self.resp_distress = False
 
+    def get_latest(self) -> dict:
+        """Get latest computed vitals."""
+        return self._result()
+
     def _result(self) -> dict:
         return {
             "breathing_bpm": self.breath_rate,
@@ -364,11 +405,11 @@ class MultiPersonTracker:
         keys = sorted(antenna_data.keys())
         matrix = np.array([antenna_data[k] for k in keys])  # (n_pairs, n_subcarriers)
 
-        # Variance profile per antenna pair → spatial signature
-        var_profile = np.var(matrix, axis=1)
-
-        # Simple clustering: split by dominant variance peaks
-        n_detected = self._count_persons(var_profile)
+        # Use ICA for 5+ antenna pairs, fallback to variance for fewer
+        if len(keys) >= 5:
+            n_detected = self._separate_sources_ica(matrix)
+        else:
+            n_detected = self._count_persons(np.var(matrix, axis=1))
 
         # Update person states
         for pid in range(n_detected):
@@ -391,6 +432,40 @@ class MultiPersonTracker:
         stale = [pid for pid in self.persons if pid >= n_detected]
         for pid in stale:
             del self.persons[pid]
+
+    def _separate_sources_ica(self, matrix: np.ndarray) -> int:
+        """Use FastICA to separate independent signal sources from multi-antenna CSI.
+
+        Each independent component potentially represents one person's signal.
+        Falls back to variance-based counting when ICA is unavailable or the
+        matrix is too small.
+
+        Args:
+            matrix: (n_antenna_pairs, n_subcarriers) CSI amplitude matrix
+        Returns:
+            Number of detected independent sources (persons)
+        """
+        if matrix.shape[0] < 4:
+            return self._count_persons(np.var(matrix, axis=1))
+
+        try:
+            from sklearn.decomposition import FastICA
+        except ImportError:
+            return self._count_persons(np.var(matrix, axis=1))
+
+        # n_components = min(n_antenna_pairs, max_persons)
+        n_comp = min(matrix.shape[0], self.max_persons)
+        ica = FastICA(n_components=n_comp, max_iter=200, tol=0.01, random_state=42)
+        try:
+            sources = ica.fit_transform(matrix.T).T  # (n_comp, n_subcarriers)
+        except Exception:
+            return self._count_persons(np.var(matrix, axis=1))
+
+        # Count components with significant energy (not just noise)
+        energies = np.array([np.var(s) for s in sources])
+        threshold = np.mean(energies) * 0.3  # components with >30% of mean energy
+        n_persons = int(np.sum(energies > threshold))
+        return max(1, min(n_persons, self.max_persons))
 
     def _count_persons(self, var_profile: np.ndarray) -> int:
         """Estimate number of persons from variance profile peaks."""
