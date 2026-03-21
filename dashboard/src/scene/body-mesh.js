@@ -542,24 +542,51 @@ class SMPLMeshRenderer {
   }
 }
 
+// ── Person color tinting ────────────────────────────────────
+function applyTintColor(renderer, hexColor) {
+  const color = new THREE.Color(hexColor);
+  for (const cd of renderer._chainData) {
+    if (cd.mesh) cd.mesh.material.color.copy(color);
+    if (cd.glowMesh) cd.glowMesh.material.color.copy(color);
+  }
+  if (renderer.headMesh) renderer.headMesh.material.color.copy(color);
+  if (renderer._headGlow) renderer._headGlow.material.color.copy(color);
+}
+
+
 // ── Public API ───────────────────────────────────────────────
 
+const MAX_PERSONS = 4;
+const PERSON_TIMEOUT_MS = 3000; // hide person mesh after 3s of no updates
+
 /**
- * Create the SMPL body mesh, add it to the scene, and wire up the bus listener.
+ * Create the SMPL body mesh pool, add to scene, and wire up bus listeners.
+ * Manages up to MAX_PERSONS body meshes. The first renderer (index 0) is the
+ * primary and responds to 'pose' events. All renderers respond to 'persons'.
  * @param {THREE.Scene} scene
  * @returns {{ group: THREE.Group, renderer: SMPLMeshRenderer, dispose: () => void }}
  */
 export function createBodyMesh(scene) {
-  const meshRenderer = new SMPLMeshRenderer();
-  scene.add(meshRenderer.group);
+  // ── Pool of renderers ──────────────────────────────────────
+  const pool = [];
+  const personIdToSlot = new Map();  // person_id -> pool index
+  const lastSeen = new Array(MAX_PERSONS).fill(0);
 
-  // Start hidden — only show when real data or explicit demo mode
-  meshRenderer.group.visible = false;
+  for (let i = 0; i < MAX_PERSONS; i++) {
+    const renderer = new SMPLMeshRenderer();
+    renderer.group.visible = false;
+    renderer.group.name = `smpl-body-${i}`;
+    scene.add(renderer.group);
+    pool.push(renderer);
+  }
+
+  // Primary renderer is pool[0] for backward compat
+  const meshRenderer = pool[0];
   let demoActive = false;
 
+  // ── Single-person pose handler (existing behavior) ─────────
   function onPose(data) {
     if (!data || !data.joints) return;
-    // Show mesh on first real data
     if (!meshRenderer.group.visible) {
       meshRenderer.group.visible = true;
     }
@@ -568,8 +595,8 @@ export function createBodyMesh(scene) {
       demoActive = false;
     }
     meshRenderer.update(data.joints);
+    lastSeen[0] = Date.now();
 
-    // Color each body chain by its average joint confidence
     const jc = data.joint_confidence;
     if (jc && jc.length === 24) {
       meshRenderer.applyConfidenceColors(jc);
@@ -577,11 +604,76 @@ export function createBodyMesh(scene) {
   }
   bus.on('pose', onPose);
 
+  // ── Multi-person handler ───────────────────────────────────
+  function onPersons(data) {
+    if (!data || !data.persons || !Array.isArray(data.persons)) return;
+    const now = Date.now();
+    const seenSlots = new Set();
+
+    for (const person of data.persons) {
+      const pid = person.id;
+
+      // Find or assign a pool slot for this person
+      let slot = personIdToSlot.get(pid);
+      if (slot === undefined) {
+        // Find first free slot
+        for (let i = 0; i < MAX_PERSONS; i++) {
+          if (!Array.from(personIdToSlot.values()).includes(i)) {
+            slot = i;
+            break;
+          }
+        }
+        if (slot === undefined) continue; // pool full
+        personIdToSlot.set(pid, slot);
+      }
+      seenSlots.add(slot);
+
+      const renderer = pool[slot];
+      if (!renderer) continue;
+
+      // Show and update
+      renderer.group.visible = true;
+      lastSeen[slot] = now;
+
+      if (person.joints && person.joints.length >= 18) {
+        renderer.update(person.joints);
+      }
+
+      // Apply person-specific tint color
+      if (person.color) {
+        applyTintColor(renderer, person.color);
+      }
+
+      // Apply joint confidence if available
+      const jc = person.joint_confidence;
+      if (jc && jc.length === 24) {
+        renderer.applyConfidenceColors(jc);
+      }
+    }
+
+    // Hide meshes for persons no longer detected (with timeout)
+    for (let i = 0; i < MAX_PERSONS; i++) {
+      if (!seenSlots.has(i) && pool[i].group.visible) {
+        if (now - lastSeen[i] > PERSON_TIMEOUT_MS) {
+          pool[i].group.visible = false;
+          // Remove stale person ID mapping
+          for (const [pid, s] of personIdToSlot.entries()) {
+            if (s === i) { personIdToSlot.delete(pid); break; }
+          }
+        }
+      }
+    }
+  }
+  bus.on('persons', onPersons);
+
   function dispose() {
     bus.off('pose', onPose);
-    scene.remove(meshRenderer.group);
-    meshRenderer.dispose();
+    bus.off('persons', onPersons);
+    for (const renderer of pool) {
+      scene.remove(renderer.group);
+      renderer.dispose();
+    }
   }
 
-  return { group: meshRenderer.group, renderer: meshRenderer, dispose };
+  return { group: meshRenderer.group, renderer: meshRenderer, pool, dispose };
 }

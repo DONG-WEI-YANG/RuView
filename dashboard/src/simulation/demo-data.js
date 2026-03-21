@@ -120,6 +120,74 @@ function simulateCSI() {
   bus.emit('csi', { amplitudes: row });
 }
 
+// ── Multi-person demo data ────────────────────────────────────────
+const PERSON_COLORS = ['#00ff88', '#ff6b6b', '#4ecdc4', '#ffbe0b'];
+const REST_POSE = [
+  [0.0, 1.7, 0.0], [0.0, 1.55, 0.0], [0.0, 1.38, 0.0], [0.0, 1.12, 0.0],
+  [-0.2, 1.4, 0.0], [-0.48, 1.4, 0.0], [-0.7, 1.4, 0.0],
+  [0.2, 1.4, 0.0], [0.48, 1.4, 0.0], [0.7, 1.4, 0.0],
+  [0.0, 0.95, 0.0], [0.0, 0.9, 0.0],
+  [-0.1, 0.88, 0.0], [-0.1, 0.5, 0.0], [-0.1, 0.08, 0.0],
+  [0.1, 0.88, 0.0], [0.1, 0.5, 0.0], [0.1, 0.08, 0.0],
+  [-0.1, 0.03, 0.08], [0.1, 0.03, 0.08],
+  [-0.78, 1.4, 0.0], [0.78, 1.4, 0.0],
+  [-0.03, 1.72, 0.06], [0.03, 1.72, 0.06],
+];
+
+let demoPersonCount = 2; // demo shows 2 people
+
+function simulatePersons() {
+  // Cycle person count slowly between 1 and 3 for demo
+  const cycle = Math.floor(t * 0.03) % 5;
+  demoPersonCount = cycle < 2 ? 2 : cycle < 4 ? 3 : 1;
+
+  if (demoPersonCount <= 1) return; // single-person mode uses 'pose' event
+
+  const persons = [];
+  for (let i = 0; i < demoPersonCount; i++) {
+    const phase = i * 1.3;
+    const offsetX = (i - (demoPersonCount - 1) / 2) * 1.2; // spread horizontally
+    const offsetZ = Math.sin(t * 0.15 + phase) * 0.3;
+    const armSwing = Math.sin(t * 0.6 + phase) * 0.04;
+    const sway = Math.sin(t * 0.4 + phase) * 0.006;
+
+    const joints = REST_POSE.map(j => [
+      j[0] + offsetX + sway,
+      j[1],
+      j[2] + offsetZ,
+    ]);
+    // Arm animation per person
+    joints[5][1] += armSwing;
+    joints[6][1] += armSwing * 1.4;
+    joints[8][1] -= armSwing;
+    joints[9][1] -= armSwing * 1.4;
+
+    // Breathing chest movement
+    const breath = Math.sin(t * 0.5 + phase) * 0.008;
+    joints[2][2] += breath;
+
+    // Per-person vitals with variation
+    const heartBase = 65 + i * 8;
+    const breathBase = 14 + i * 2;
+
+    persons.push({
+      id: i,
+      joints,
+      confidence: 0.75 + Math.sin(t * 0.1 + phase) * 0.15,
+      joint_confidence: new Array(24).fill(0.7),
+      vitals: {
+        heart_bpm: heartBase + Math.sin(t * 0.07 + phase) * 5,
+        breathing_bpm: breathBase + Math.sin(t * 0.05 + phase) * 2,
+        stress_index: 35 + Math.sin(t * 0.04 + phase) * 15,
+      },
+      position: [offsetX, offsetZ],
+      color: PERSON_COLORS[i % PERSON_COLORS.length],
+    });
+  }
+
+  bus.emit('persons', { persons, count: demoPersonCount });
+}
+
 function simulatePresence() {
   const px = GRID_W / 2 + Math.sin(t * 0.15) * (GRID_W * 0.3);
   const py = GRID_H / 2 + Math.cos(t * 0.11) * (GRID_H * 0.25);
@@ -145,6 +213,7 @@ function tick(time) {
   simulateVitals(dt);
   simulateCSI();
   simulatePresence();
+  simulatePersons();
 
   animId = requestAnimationFrame(tick);
 }

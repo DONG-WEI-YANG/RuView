@@ -3,17 +3,20 @@
  * Vital Signs HUD overlay — renders breathing/heart rate numbers,
  * confidence bars, HRV, and stress on the 3D viewer tab.
  *
- * Subscribes to EventBus 'vitals' events.
+ * Subscribes to EventBus 'vitals' events (single person) and
+ * 'persons' events (multi-person compact vitals cards).
  * Data-source agnostic: works with both real and demo data.
  */
 import { bus } from '../events.js';
 
-let unsub = null;
+let unsubVitals = null;
+let unsubPersons = null;
 
 // ── Cached DOM refs ───────────────────────────────────────────────
 let elBreathVal, elBreathConfBar;
 let elHeartVal, elHeartConfBar;
 let elHudHrv, elHudStress, elHudStressBar;
+let elMultiPersonPanel = null;
 
 function cacheDom() {
   elBreathVal     = document.getElementById('breath-val');
@@ -25,7 +28,7 @@ function cacheDom() {
   elHudStressBar  = document.getElementById('hud-stress-bar');
 }
 
-// ── Rendering ─────────────────────────────────────────────────────
+// ── Single-person vitals rendering ───────────────────────────────
 function onVitals(data) {
   // Breathing
   if (elBreathVal) {
@@ -60,15 +63,108 @@ function onVitals(data) {
   }
 }
 
+// ── Multi-person vitals panel ────────────────────────────────────
+function ensureMultiPersonPanel() {
+  if (elMultiPersonPanel) return elMultiPersonPanel;
+  const hud = document.getElementById('vitals-hud');
+  if (!hud) return null;
+
+  elMultiPersonPanel = document.createElement('div');
+  elMultiPersonPanel.id = 'multi-person-vitals';
+  elMultiPersonPanel.style.cssText = [
+    'display:none',
+    'margin-top:8px',
+    'padding:6px 8px',
+    'background:rgba(0,0,0,0.6)',
+    'border:1px solid rgba(255,255,255,0.1)',
+    'border-radius:6px',
+    'font-size:11px',
+    'color:#ccc',
+    'max-width:320px',
+  ].join(';');
+  hud.appendChild(elMultiPersonPanel);
+  return elMultiPersonPanel;
+}
+
+function onPersons(data) {
+  if (!data || !data.persons || data.count <= 1) {
+    // Hide multi-person panel when single or no persons
+    if (elMultiPersonPanel) elMultiPersonPanel.style.display = 'none';
+    return;
+  }
+
+  const panel = ensureMultiPersonPanel();
+  if (!panel) return;
+  panel.style.display = 'block';
+
+  // Clear existing cards
+  while (panel.firstChild) panel.removeChild(panel.firstChild);
+
+  // Header
+  const header = document.createElement('div');
+  header.style.cssText = 'font-size:10px;color:#888;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px';
+  header.textContent = data.count + ' People Detected';
+  panel.appendChild(header);
+
+  // Per-person compact card
+  for (const person of data.persons) {
+    const card = document.createElement('div');
+    card.style.cssText = [
+      'display:flex',
+      'align-items:center',
+      'gap:8px',
+      'padding:4px 0',
+      'border-bottom:1px solid rgba(255,255,255,0.05)',
+    ].join(';');
+
+    // Color dot
+    const dot = document.createElement('span');
+    dot.style.cssText = `display:inline-block;width:8px;height:8px;border-radius:50%;background:${person.color || '#00ff88';};flex-shrink:0`;
+    card.appendChild(dot);
+
+    // Person label
+    const label = document.createElement('span');
+    label.style.cssText = 'min-width:56px;color:#aaa;font-size:10px';
+    label.textContent = 'Person ' + (person.id + 1);
+    card.appendChild(label);
+
+    // Heart BPM
+    const vitals = person.vitals || {};
+    const heartBpm = vitals.heart_bpm || vitals.heartRate || 0;
+    const breathBpm = vitals.breathing_bpm || vitals.breathRate || 0;
+
+    const heartEl = document.createElement('span');
+    heartEl.style.cssText = 'color:#ff6b6b;min-width:52px;font-size:11px';
+    heartEl.textContent = '\u2665 ' + (heartBpm > 0 ? heartBpm.toFixed(0) : '--');
+    card.appendChild(heartEl);
+
+    // Breathing BPM
+    const breathEl = document.createElement('span');
+    breathEl.style.cssText = 'color:#4ecdc4;min-width:52px;font-size:11px';
+    breathEl.textContent = '~ ' + (breathBpm > 0 ? breathBpm.toFixed(1) : '--');
+    card.appendChild(breathEl);
+
+    panel.appendChild(card);
+  }
+}
+
 // ── Public API ────────────────────────────────────────────────────
 export function init() {
   cacheDom();
-  const handler = (data) => onVitals(data);
-  bus.on('vitals', handler);
-  unsub = () => bus.off('vitals', handler);
-  console.log('VitalsHUD renderer initialized');
+  const vitalsHandler = (data) => onVitals(data);
+  const personsHandler = (data) => onPersons(data);
+  bus.on('vitals', vitalsHandler);
+  bus.on('persons', personsHandler);
+  unsubVitals = () => bus.off('vitals', vitalsHandler);
+  unsubPersons = () => bus.off('persons', personsHandler);
+  console.log('VitalsHUD renderer initialized (multi-person support)');
 }
 
 export function dispose() {
-  if (unsub) { unsub(); unsub = null; }
+  if (unsubVitals) { unsubVitals(); unsubVitals = null; }
+  if (unsubPersons) { unsubPersons(); unsubPersons = null; }
+  if (elMultiPersonPanel) {
+    elMultiPersonPanel.remove();
+    elMultiPersonPanel = null;
+  }
 }
