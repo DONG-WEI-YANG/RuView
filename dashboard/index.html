@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>WiFi Body Sensing Dashboard</title>
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#00ff00">
   <link rel="stylesheet" href="/styles/main.css">
   <link rel="stylesheet" href="/styles/tabs.css">
   <link rel="stylesheet" href="/styles/hud.css">
@@ -30,5 +32,6 @@
   </div>
   <div class="crt-overlay"></div>
   <script type="module" src="/src/main.js"></script>
+  <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');</script>
 </body>
 </html>
