@@ -35,10 +35,18 @@ def _print_qr(url: str) -> None:
     """Print a QR code to terminal if qrcode lib is available."""
     try:
         import qrcode  # type: ignore
+        import io, sys
         qr = qrcode.QRCode(box_size=1, border=1)
         qr.add_data(url)
         qr.make(fit=True)
-        qr.print_ascii(invert=True)
+        buf = io.StringIO()
+        qr.print_ascii(out=buf, invert=True)
+        try:
+            sys.stdout.write(buf.getvalue())
+        except UnicodeEncodeError:
+            # cp950 / other CJK codepages can't render Unicode block chars
+            print("   [QR code cannot display in this terminal]")
+            print(f"   URL: {url}")
     except ImportError:
         pass
 
