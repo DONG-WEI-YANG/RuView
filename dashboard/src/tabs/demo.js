@@ -44,6 +44,79 @@ const POSE_BONES_2D = [
   [11,15],[15,16],[16,17],        // R leg
 ];
 
+/** Helper: create an element with optional property overrides. */
+function makeEl(tag, props) {
+  const el = document.createElement(tag);
+  if (props) Object.assign(el, props);
+  return el;
+}
+
+/**
+ * Build the demo tab DOM using safe DOM API methods.
+ */
+function buildDOM(container) {
+  while (container.firstChild) container.removeChild(container.firstChild);
+
+  const scroll = makeEl('div', { className: 'tab-scroll' });
+
+  // Controls panel
+  const controlsPanel = makeEl('div', { className: 'panel' });
+  controlsPanel.appendChild(makeEl('h2', { textContent: 'Live Demonstration' }));
+  const demoControls = makeEl('div', { className: 'demo-controls' });
+  const startBtn = makeEl('button', { className: 'btn btn-primary', id: 'startDemo', textContent: 'Start Stream' });
+  demoControls.appendChild(startBtn);
+  const stopBtn = makeEl('button', { className: 'btn btn-secondary', id: 'stopDemo', textContent: 'Stop Stream' });
+  stopBtn.disabled = true;
+  demoControls.appendChild(stopBtn);
+  demoControls.appendChild(makeEl('span', { className: 'demo-status', id: 'demoStatus', textContent: 'Ready' }));
+  controlsPanel.appendChild(demoControls);
+  scroll.appendChild(controlsPanel);
+
+  // Demo grid (signal + pose)
+  const demoGrid = makeEl('div', { className: 'demo-grid' });
+
+  // Signal panel
+  const sigPanel = makeEl('div', { className: 'panel' });
+  sigPanel.appendChild(makeEl('h3', { textContent: 'WiFi Signal Analysis' }));
+  const sigCanvas = document.createElement('canvas');
+  sigCanvas.id = 'signalCanvas';
+  sigCanvas.width = 400;
+  sigCanvas.height = 200;
+  sigPanel.appendChild(sigCanvas);
+  const sigMetrics = makeEl('div', { className: 'signal-metrics' });
+  const sigRow1 = makeEl('div', { className: 'metric-row' });
+  sigRow1.appendChild(makeEl('span', { className: 'metric-label', textContent: 'Signal Strength:' }));
+  sigRow1.appendChild(makeEl('span', { className: 'metric-val', id: 'signalStrength', textContent: '-45 dBm' }));
+  sigMetrics.appendChild(sigRow1);
+  const sigRow2 = makeEl('div', { className: 'metric-row' });
+  sigRow2.appendChild(makeEl('span', { className: 'metric-label', textContent: 'Processing Latency:' }));
+  sigRow2.appendChild(makeEl('span', { className: 'metric-val', id: 'latency', textContent: '12 ms' }));
+  sigMetrics.appendChild(sigRow2);
+  sigPanel.appendChild(sigMetrics);
+  demoGrid.appendChild(sigPanel);
+
+  // Pose panel
+  const posePanel = makeEl('div', { className: 'panel' });
+  posePanel.appendChild(makeEl('h3', { textContent: 'Pose Detection' }));
+  const pCanvas = document.createElement('canvas');
+  pCanvas.id = 'poseCanvas';
+  pCanvas.width = 400;
+  pCanvas.height = 200;
+  posePanel.appendChild(pCanvas);
+  const detInfo = makeEl('div', { className: 'detection-info' });
+  [['Persons Detected:', 'personCount', '0'], ['Confidence:', 'confidence', '0.0%'], ['Keypoints:', 'keypoints', '0/24']].forEach(([label, id, val]) => {
+    const row = makeEl('div', { className: 'metric-row' });
+    row.appendChild(makeEl('span', { className: 'metric-label', textContent: label }));
+    row.appendChild(makeEl('span', { className: 'metric-val', id: id, textContent: val }));
+    detInfo.appendChild(row);
+  });
+  posePanel.appendChild(detInfo);
+  demoGrid.appendChild(posePanel);
+
+  scroll.appendChild(demoGrid);
+  container.appendChild(scroll);
+}
+
 // ── Signal Canvas ─────────────────────────────────────────────────
 function renderSignalCanvas() {
   if (!signalCtx) return;
@@ -240,12 +313,38 @@ function onVitals(data) {
   if (data.breathRate !== undefined) breathRate = data.breathRate;
 }
 
+function initDemoButtons() {
+  const startBtn = document.getElementById('startDemo');
+  const stopBtn = document.getElementById('stopDemo');
+  const demoSt = document.getElementById('demoStatus');
+
+  if (startBtn) startBtn.addEventListener('click', () => {
+    startBtn.disabled = true; stopBtn.disabled = false;
+    demoSt.textContent = 'Streaming...';
+    demoSt.className = 'demo-status streaming';
+  });
+  if (stopBtn) stopBtn.addEventListener('click', () => {
+    startBtn.disabled = false; stopBtn.disabled = true;
+    demoSt.textContent = 'Stopped';
+    demoSt.className = 'demo-status';
+  });
+}
+
 // ── Public API ────────────────────────────────────────────────────
 export default {
   id: 'demo',
   label: 'Live Demo',
 
   init() {
+    const container = document.getElementById('tab-demo');
+    if (!container) return;
+
+    // Build the DOM structure first
+    buildDOM(container);
+
+    // Initialize demo buttons
+    initDemoButtons();
+
     signalCanvas = document.getElementById('signalCanvas');
     poseCanvas   = document.getElementById('poseCanvas');
     signalCtx = signalCanvas ? signalCanvas.getContext('2d') : null;

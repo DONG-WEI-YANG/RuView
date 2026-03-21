@@ -43,15 +43,147 @@ function cycleRenderMode() {
   applyRenderMode();
 }
 
+/**
+ * Build the inner DOM for the viewer tab, including the canvas container,
+ * HUD overlay, and the side info panel.
+ * Uses DOM API methods only — no innerHTML — to avoid XSS surface.
+ */
+function buildDOM(el) {
+  // Clear existing content
+  while (el.firstChild) el.removeChild(el.firstChild);
+
+  const main = document.createElement('main');
+
+  // ── viewer-section ────────────────────────────────────────
+  const section = document.createElement('section');
+  section.id = 'viewer-section';
+
+  const canvasContainer = document.createElement('div');
+  canvasContainer.id = 'skeleton-canvas-container';
+  section.appendChild(canvasContainer);
+
+  // ── Vitals HUD overlay ────────────────────────────────────
+  const hudDiv = document.createElement('div');
+  hudDiv.id = 'vitals-hud';
+
+  // Breath card
+  const breathCard = document.createElement('div');
+  breathCard.className = 'hud-card hud-breath';
+  breathCard.appendChild(makeEl('div', { className: 'hud-icon', textContent: '~' }));
+  const breathInfo = document.createElement('div');
+  breathInfo.className = 'hud-info';
+  breathInfo.appendChild(makeEl('span', { className: 'hud-label', textContent: 'BREATHING' }));
+  breathInfo.appendChild(makeEl('span', { className: 'hud-value', id: 'breath-val', textContent: '-- BPM' }));
+  const breathConf = makeEl('div', { className: 'hud-conf' });
+  breathConf.appendChild(makeEl('div', { className: 'hud-conf-fill', id: 'breath-conf-bar' }));
+  breathInfo.appendChild(breathConf);
+  breathCard.appendChild(breathInfo);
+  const breathWaveCanvas = document.createElement('canvas');
+  breathWaveCanvas.id = 'breath-wave';
+  breathWaveCanvas.width = 120;
+  breathWaveCanvas.height = 36;
+  breathCard.appendChild(breathWaveCanvas);
+  hudDiv.appendChild(breathCard);
+
+  // Heart card
+  const heartCard = document.createElement('div');
+  heartCard.className = 'hud-card hud-heart';
+  heartCard.appendChild(makeEl('div', { className: 'hud-icon', textContent: '\u2665' }));
+  const heartInfo = document.createElement('div');
+  heartInfo.className = 'hud-info';
+  heartInfo.appendChild(makeEl('span', { className: 'hud-label', textContent: 'HEART RATE' }));
+  heartInfo.appendChild(makeEl('span', { className: 'hud-value', id: 'heart-val', textContent: '-- BPM' }));
+  const heartConf = makeEl('div', { className: 'hud-conf' });
+  heartConf.appendChild(makeEl('div', { className: 'hud-conf-fill heart', id: 'heart-conf-bar' }));
+  heartInfo.appendChild(heartConf);
+  heartCard.appendChild(heartInfo);
+  const heartWaveCanvas = document.createElement('canvas');
+  heartWaveCanvas.id = 'heart-wave';
+  heartWaveCanvas.width = 120;
+  heartWaveCanvas.height = 36;
+  heartCard.appendChild(heartWaveCanvas);
+  hudDiv.appendChild(heartCard);
+
+  // HRV / Stress card
+  const hrvCard = document.createElement('div');
+  hrvCard.className = 'hud-card hud-hrv';
+  hrvCard.appendChild(makeEl('div', { className: 'hud-icon', textContent: '~' }));
+  const hrvInfo = document.createElement('div');
+  hrvInfo.className = 'hud-info';
+  hrvInfo.appendChild(makeEl('span', { className: 'hud-label', textContent: 'HRV' }));
+  hrvInfo.appendChild(makeEl('span', { className: 'hud-value', id: 'hud-hrv-val', textContent: '-- ms' }));
+  hrvCard.appendChild(hrvInfo);
+  const stressInfo = document.createElement('div');
+  stressInfo.className = 'hud-info';
+  stressInfo.style.minWidth = '60px';
+  stressInfo.appendChild(makeEl('span', { className: 'hud-label', textContent: 'STRESS' }));
+  stressInfo.appendChild(makeEl('span', { className: 'hud-value', id: 'hud-stress-val', textContent: '--' }));
+  const stressConf = makeEl('div', { className: 'hud-conf' });
+  stressConf.appendChild(makeEl('div', { className: 'hud-conf-fill stress', id: 'hud-stress-bar' }));
+  stressInfo.appendChild(stressConf);
+  hrvCard.appendChild(stressInfo);
+  hudDiv.appendChild(hrvCard);
+
+  section.appendChild(hudDiv);
+  main.appendChild(section);
+
+  // ── Side info panel ───────────────────────────────────────
+  const aside = document.createElement('aside');
+  aside.id = 'info-panel';
+
+  const activityCard = document.createElement('div');
+  activityCard.id = 'activity-card';
+  activityCard.className = 'card';
+  activityCard.appendChild(makeEl('h3', { textContent: 'Activity' }));
+  activityCard.appendChild(makeEl('p', { id: 'activity-type', textContent: '--' }));
+  aside.appendChild(activityCard);
+
+  const alertCard = document.createElement('div');
+  alertCard.id = 'alert-card';
+  alertCard.className = 'card';
+  alertCard.appendChild(makeEl('h3', { textContent: 'Fall Alert' }));
+  alertCard.appendChild(makeEl('p', { id: 'fall-status', textContent: 'Normal' }));
+  aside.appendChild(alertCard);
+
+  const nodesCard = document.createElement('div');
+  nodesCard.id = 'nodes-card';
+  nodesCard.className = 'card';
+  nodesCard.appendChild(makeEl('h3', { textContent: 'Nodes' }));
+  const nodeList = document.createElement('ul');
+  nodeList.id = 'node-list';
+  nodesCard.appendChild(nodeList);
+  aside.appendChild(nodesCard);
+
+  main.appendChild(aside);
+  el.appendChild(main);
+}
+
+/** Helper: create an element with optional property overrides. */
+function makeEl(tag, props) {
+  const el = document.createElement(tag);
+  if (props) Object.assign(el, props);
+  return el;
+}
+
 export default {
   id: 'viewer',
   label: '3D Viewer',
 
   init() {
+    const el = document.getElementById('tab-viewer');
+    if (!el) {
+      console.warn('Viewer tab: no #tab-viewer element found');
+      return;
+    }
+
+    // Build DOM content first (must exist before scene/hud modules query it)
+    buildDOM(el);
+
+    // Now find the container for Three.js
     const container = document.getElementById('skeleton-canvas-container')
-      || document.getElementById('tab-viewer');
+      || document.getElementById('viewer-section');
     if (!container) {
-      console.warn('Viewer tab: no container element found');
+      console.warn('Viewer tab: no container element found after buildDOM');
       return;
     }
 
