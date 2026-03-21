@@ -119,7 +119,7 @@ function onPersons(data) {
 
     // Color dot
     const dot = document.createElement('span');
-    dot.style.cssText = `display:inline-block;width:8px;height:8px;border-radius:50%;background:${person.color || '#00ff88';};flex-shrink:0`;
+    dot.style.cssText = `display:inline-block;width:8px;height:8px;border-radius:50%;background:${person.color || '#00ff88'};flex-shrink:0`;
     card.appendChild(dot);
 
     // Person label

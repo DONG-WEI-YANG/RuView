@@ -83,6 +83,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     dashboard_dir = Path(__file__).parent.parent / "dashboard"
     static_dir = dist_dir if dist_dir.exists() else dashboard_dir
     if static_dir.exists():
-        app.mount("/dashboard", StaticFiles(directory=str(static_dir)), name="dashboard")
+        app.mount("/dashboard", StaticFiles(directory=str(static_dir), html=True), name="dashboard")
 
     return app

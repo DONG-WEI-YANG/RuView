@@ -17,6 +17,43 @@ from server.api import create_app
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
 
 
+def _free_port(port: int) -> None:
+    """Kill any process listening on this TCP/UDP port (Windows/Linux/macOS)."""
+    import subprocess, sys, os
+    if sys.platform == "win32":
+        try:
+            out = subprocess.check_output(
+                f'netstat -ano | findstr ":{port} " | findstr "LISTENING"',
+                shell=True, text=True, timeout=5,
+            )
+            pids = set()
+            for line in out.strip().splitlines():
+                parts = line.split()
+                if parts:
+                    pids.add(parts[-1])
+            my_pid = str(os.getpid())
+            for pid in pids:
+                if pid != my_pid and pid != "0":
+                    subprocess.run(f"taskkill /PID {pid} /F", shell=True,
+                                   capture_output=True, timeout=5)
+                    logging.getLogger(__name__).info("Killed stale server PID %s on port %d", pid, port)
+            if pids:
+                import time; time.sleep(1)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            pass
+    else:
+        try:
+            out = subprocess.check_output(
+                f"lsof -ti :{port}", shell=True, text=True, timeout=5,
+            )
+            my_pid = str(os.getpid())
+            for pid in out.strip().split():
+                if pid != my_pid:
+                    subprocess.run(f"kill -9 {pid}", shell=True, timeout=5)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            pass
+
+
 def _get_local_ips() -> list[str]:
     """Get all non-loopback IPv4 addresses on this machine."""
     ips = []
@@ -153,6 +190,9 @@ def main():
 
     if args.simulate:
         settings.simulate = True
+
+    # Ensure port is free (kill stale server if needed)
+    _free_port(settings.api_port)
 
     app = create_app(settings)
     zc = _start_mdns(settings.api_port)
