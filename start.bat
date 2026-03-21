@@ -3,23 +3,19 @@ title WiFi Body - Server + Dashboard
 cd /d "%~dp0"
 
 :: Activate virtual environment
-if exist .venv\Scripts\activate.bat (
-    call .venv\Scripts\activate.bat
-) else (
-    echo [WARN] No .venv found, using system Python
+if exist .venv\Scripts\activate.bat call .venv\Scripts\activate.bat
+
+:: Build dashboard if dist doesn't exist
+if not exist "dist\dashboard\index.html" (
+    echo Building dashboard...
+    cd dashboard
+    call npx vite build
+    cd ..
 )
 
-:: Open dashboard in default browser after a short delay
-start "" cmd /c "timeout /t 2 /nobreak >nul & start http://localhost:8000"
+:: Open dashboard in browser after server starts
+start "" cmd /c "timeout /t 4 /nobreak >nul & start http://localhost:8000/dashboard/"
 
-:: Start backend (also serves dashboard static files)
-echo.
-echo  ==========================================
-echo   WiFi Body Pose Estimation Server
-echo   Dashboard: http://localhost:8000
-echo   Press Ctrl+C to stop
-echo  ==========================================
-echo.
-python -m server %*
-
+:: Start server (defaults to real mode)
+python -m server --port 8000 %*
 pause
