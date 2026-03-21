@@ -73,7 +73,7 @@ function buildDOM(el) {
   // Step indicator
   const stepBar = makeEl('div', { id: 'wizard-steps' });
   stepBar.style.cssText = 'display:flex;justify-content:center;gap:8px;margin-bottom:20px';
-  const stepLabels = ['Connect', 'Place', 'Calibrate', 'Go'];
+  const stepLabels = ['Connect', 'Place', 'Calibrate', 'Train', 'Go'];
   stepLabels.forEach((label, i) => {
     const dot = makeEl('div', { textContent: label, className: 'wizard-step' + (i === 0 ? ' active' : '') });
     dot.dataset.step = i;
@@ -121,16 +121,53 @@ function buildDOM(el) {
   s2.appendChild(calStatus);
   stepContent.appendChild(s2);
 
-  // -- Step 3: Go --
+  // -- Step 3: Train Model --
   const s3 = makeEl('div', { className: 'wizard-page', id: 'wizard-page-3', style: 'display:none' });
-  s3.appendChild(makeEl('div', { textContent: '✓', style: 'font-size:48px;color:var(--accent-green,#0f0);margin-bottom:12px' }));
-  s3.appendChild(makeEl('div', { textContent: 'Ready!', style: 'font-size:16px;color:#ccc;margin-bottom:8px;font-weight:bold' }));
+  s3.appendChild(makeEl('div', { textContent: '🧠', style: 'font-size:48px;opacity:0.5;margin-bottom:12px' }));
+  s3.appendChild(makeEl('div', { textContent: 'Train Pose Model', style: 'font-size:16px;color:#ccc;margin-bottom:8px;font-weight:bold' }));
+
+  const modelStatus = makeEl('div', { id: 'wizard-model-status', style: 'font-size:13px;margin-bottom:12px' });
+  s3.appendChild(modelStatus);
+
+  const trainInfo = makeEl('div', { style: 'font-size:12px;color:#888;line-height:1.8;text-align:left;margin-bottom:16px' });
+  trainInfo.appendChild(makeEl('div', { textContent: 'Vital signs (breathing, heart rate, HRV) work without a model.', style: 'color:var(--accent-green,#0f0);margin-bottom:8px' }));
+  trainInfo.appendChild(makeEl('div', { textContent: 'For pose estimation, you need to train with real data:', style: 'margin-bottom:4px' }));
+
+  const steps = [
+    '1. Set up a webcam facing the sensing area',
+    '2. Go to Hardware tab → Data Collection',
+    '3. Record 5-10 min of activities (standing, walking, sitting)',
+    '4. Run in terminal: python -m server.train --data-dir data/real',
+    '5. Restart server to load the new model',
+  ];
+  const stepList = makeEl('div', { style: 'margin-left:8px' });
+  steps.forEach(s => {
+    stepList.appendChild(makeEl('div', { textContent: s, style: 'padding:2px 0;font-size:11px;color:#aaa' }));
+  });
+  trainInfo.appendChild(stepList);
+
+  const orDiv = makeEl('div', { style: 'margin-top:12px;padding-top:8px;border-top:1px solid #333' });
+  orDiv.appendChild(makeEl('div', { textContent: 'Or download a pre-trained dataset:', style: 'margin-bottom:4px' }));
+  orDiv.appendChild(makeEl('div', { textContent: 'python -m server.dataset_download --dataset mmfi', style: 'font-family:monospace;font-size:11px;color:#aaa;background:#111;padding:4px 8px;border-radius:2px' }));
+  trainInfo.appendChild(orDiv);
+
+  s3.appendChild(trainInfo);
+
+  const nextBtn3 = makeEl('button', { textContent: 'Continue without pose model →', id: 'wizard-next-3' });
+  nextBtn3.style.cssText = 'padding:8px 20px;background:var(--accent-green,#0f0);border:none;color:#000;cursor:pointer;font-weight:bold;font-size:12px';
+  s3.appendChild(nextBtn3);
+  stepContent.appendChild(s3);
+
+  // -- Step 4: Go --
+  const s4 = makeEl('div', { className: 'wizard-page', id: 'wizard-page-4', style: 'display:none' });
+  s4.appendChild(makeEl('div', { textContent: '✓', style: 'font-size:48px;color:var(--accent-green,#0f0);margin-bottom:12px' }));
+  s4.appendChild(makeEl('div', { textContent: 'Ready!', style: 'font-size:16px;color:#ccc;margin-bottom:8px;font-weight:bold' }));
   const goSummary = makeEl('div', { id: 'wizard-summary', style: 'font-size:12px;color:#888;line-height:1.6;margin-bottom:16px' });
-  s3.appendChild(goSummary);
+  s4.appendChild(goSummary);
   const goBtn = makeEl('button', { textContent: 'Start Monitoring', id: 'wizard-go' });
   goBtn.style.cssText = 'padding:10px 28px;background:var(--accent-green,#0f0);border:none;color:#000;cursor:pointer;font-weight:bold;font-size:14px';
-  s3.appendChild(goBtn);
-  stepContent.appendChild(s3);
+  s4.appendChild(goBtn);
+  stepContent.appendChild(s4);
 
   waitOverlay.appendChild(wizard);
   section.appendChild(waitOverlay);
@@ -384,7 +421,8 @@ export default {
         const summary = document.getElementById('wizard-summary');
         if (summary) {
           const strategy = ps.strategy_description || '';
-          summary.textContent = detectedNodes + ' nodes connected\nStrategy: ' + (ps.strategy || 'auto') + '\n' + strategy;
+          const modelLine = ps.model_loaded ? '✓ Pose model loaded' : '△ Vital signs only (no pose model)';
+          summary.textContent = detectedNodes + ' nodes connected\nStrategy: ' + (ps.strategy || 'auto') + ' — ' + strategy + '\n' + modelLine;
           summary.style.whiteSpace = 'pre-line';
         }
       }).catch(() => {});
@@ -423,6 +461,7 @@ export default {
               .then(data => {
                 if (calSt) calSt.textContent = 'Calibration complete!';
                 calBtnEl.textContent = 'Done';
+                updateModelStatus();
                 showWizardStep(3);
               });
           }, 5500);
@@ -434,7 +473,34 @@ export default {
         });
     };
 
-    // Step 3: Go!
+    // Step 3: Train — check model status and wire next button
+    function updateModelStatus() {
+      fetch('/api/status').then(r => r.json()).then(data => {
+        const ps = data.pipeline_status || {};
+        const el = document.getElementById('wizard-model-status');
+        if (!el) return;
+        if (ps.model_loaded) {
+          el.textContent = '✓ Pose model loaded — full pose estimation available';
+          el.style.color = 'var(--accent-green,#0f0)';
+        } else {
+          el.textContent = '△ No pose model — vital signs only (breathing, heart rate, HRV)';
+          el.style.color = '#ffb400';
+        }
+      }).catch(() => {});
+    }
+
+    // When calibration completes → show train step with model status
+    const origCalComplete = calBtnEl.onclick;
+    // (calibration already wired above, just need to update model status when step 3 shows)
+    bus.on('tab:changed', () => { if (wizardStep === 3) updateModelStatus(); });
+
+    const next3El = document.getElementById('wizard-next-3');
+    if (next3El) next3El.onclick = () => {
+      updateModelStatus();
+      showWizardStep(4);
+    };
+
+    // Step 4: Go!
     const goEl = document.getElementById('wizard-go');
     if (goEl) goEl.onclick = () => {
       const ov = document.getElementById('waiting-overlay');
