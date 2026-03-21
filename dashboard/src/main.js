@@ -22,18 +22,48 @@ import performance from './tabs/performance.js';
 
 // Build tab bar
 const tabBar = document.getElementById('tab-bar');
+tabBar.setAttribute('role', 'tablist');
 getRegisteredTabs().forEach((tab) => {
   const btn = document.createElement('button');
   btn.textContent = tab.label;
   btn.dataset.tab = tab.id;
+  btn.setAttribute('role', 'tab');
+  btn.setAttribute('aria-selected', 'false');
+  btn.id = 'tab-btn-' + tab.id;
+  btn.setAttribute('aria-controls', 'tab-' + tab.id);
   btn.addEventListener('click', () => switchTab(tab.id));
   tabBar.appendChild(btn);
 });
 
-// Highlight active tab
+// Keyboard navigation for tab bar
+tabBar.addEventListener('keydown', (e) => {
+  const tabs = Array.from(tabBar.querySelectorAll('button'));
+  const idx = tabs.indexOf(document.activeElement);
+  if (idx < 0) return;
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+    e.preventDefault();
+    const next = tabs[(idx + 1) % tabs.length];
+    next.focus();
+    switchTab(next.dataset.tab);
+  } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    const prev = tabs[(idx - 1 + tabs.length) % tabs.length];
+    prev.focus();
+    switchTab(prev.dataset.tab);
+  }
+});
+
+// Highlight active tab and set ARIA attributes
 bus.on('tab:changed', (tabId) => {
   tabBar.querySelectorAll('button').forEach((btn) => {
-    btn.classList.toggle('active', btn.dataset.tab === tabId);
+    const isActive = btn.dataset.tab === tabId;
+    btn.classList.toggle('active', isActive);
+    btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
+  // Set tabpanel roles on each panel
+  document.querySelectorAll('.tab-panel').forEach(p => {
+    p.setAttribute('role', 'tabpanel');
+    p.setAttribute('aria-labelledby', 'tab-btn-' + p.id.replace('tab-', ''));
   });
 });
 
