@@ -430,13 +430,16 @@ export function createBodyMesh(scene) {
   const meshRenderer = new SMPLMeshRenderer();
   scene.add(meshRenderer.group);
 
-  // Show demo idle animation immediately
-  meshRenderer.showDemo();
-  let demoActive = true;
+  // Start hidden — only show when real data or explicit demo mode
+  meshRenderer.group.visible = false;
+  let demoActive = false;
 
   function onPose(data) {
     if (!data || !data.joints) return;
-    // Stop demo once real data arrives
+    // Show mesh on first real data
+    if (!meshRenderer.group.visible) {
+      meshRenderer.group.visible = true;
+    }
     if (demoActive) {
       meshRenderer.stopDemo();
       demoActive = false;

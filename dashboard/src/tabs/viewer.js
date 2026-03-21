@@ -62,6 +62,25 @@ function buildDOM(el) {
   canvasContainer.id = 'skeleton-canvas-container';
   section.appendChild(canvasContainer);
 
+  // ── Waiting overlay (shown until real data arrives) ──────
+  const waitOverlay = document.createElement('div');
+  waitOverlay.id = 'waiting-overlay';
+  waitOverlay.style.cssText = 'position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:10;pointer-events:none';
+
+  const waitIcon = makeEl('div', { textContent: '📡' });
+  waitIcon.style.cssText = 'font-size:48px;opacity:0.3;margin-bottom:12px';
+  waitOverlay.appendChild(waitIcon);
+
+  const waitMsg = makeEl('div', { textContent: 'Waiting for ESP32 nodes...' });
+  waitMsg.style.cssText = 'color:var(--text-secondary,#666);font-size:14px';
+  waitOverlay.appendChild(waitMsg);
+
+  const waitHint = makeEl('div', { textContent: 'Connect hardware or start simulation mode' });
+  waitHint.style.cssText = 'color:var(--text-secondary,#444);font-size:11px;margin-top:4px';
+  waitOverlay.appendChild(waitHint);
+
+  section.appendChild(waitOverlay);
+
   // ── Vitals HUD overlay ────────────────────────────────────
   const hudDiv = document.createElement('div');
   hudDiv.id = 'vitals-hud';
@@ -259,6 +278,13 @@ export default {
 
     // Initialize vital-signs HUD overlay (renders on top of 3D view)
     hud.init();
+
+    // Hide waiting overlay when first pose data arrives
+    bus.on('pose', function hideWait() {
+      const ov = document.getElementById('waiting-overlay');
+      if (ov) ov.style.display = 'none';
+      bus.off('pose', hideWait);
+    });
 
     console.log('Viewer tab initialized (ES6 scene modules + HUD)');
   },

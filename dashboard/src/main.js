@@ -44,11 +44,31 @@ client.connect();
 
 // Connection status indicator
 const statusEl = document.getElementById('connection-status');
-bus.on('ws:connected', () => { statusEl.textContent = 'Connected'; statusEl.className = 'connected'; });
-bus.on('ws:disconnected', () => { statusEl.textContent = 'Reconnecting...'; statusEl.className = 'disconnected'; });
+const modeEl = document.getElementById('mode-badge');
 
-// Start demo data generator (auto-stops when WebSocket connects)
-startDemoData();
+bus.on('ws:connected', () => {
+  statusEl.textContent = 'Connected';
+  statusEl.className = 'connected';
+  // Check if server is in simulation mode → start demo data
+  fetch('/api/status').then(r => r.json()).then(data => {
+    if (data.pipeline_status && data.pipeline_status.is_simulating) {
+      modeEl.textContent = 'DEMO';
+      modeEl.className = 'demo';
+      startDemoData();
+    } else {
+      modeEl.textContent = 'LIVE';
+      modeEl.className = 'live';
+    }
+  }).catch(() => {});
+});
+
+bus.on('ws:disconnected', () => {
+  statusEl.textContent = 'Waiting for server...';
+  statusEl.className = 'disconnected';
+  modeEl.textContent = '';
+});
+
+// Don't auto-start demo data — wait for server connection to decide
 
 // Default to viewer tab
 switchTab('viewer');

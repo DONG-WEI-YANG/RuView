@@ -88,9 +88,15 @@ export function createSkeleton(scene) {
     }
   }
 
+  // Start hidden — show only when real pose data arrives
+  group.visible = false;
+
   // ── Subscribe to pose events ───────────────────────────────
   function onPose(data) {
-    if (data && data.joints) update(data.joints);
+    if (data && data.joints) {
+      if (!group.visible) group.visible = true;
+      update(data.joints);
+    }
   }
   bus.on('pose', onPose);
 
