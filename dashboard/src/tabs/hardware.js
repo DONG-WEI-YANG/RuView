@@ -209,40 +209,40 @@ function buildDOM(container) {
   antennaPanel.appendChild(antennaArray);
   hwGrid.appendChild(antennaPanel);
 
-  // WiFi Configuration
+  // WiFi Configuration — auto-detected from PC
   const wifiPanel = makeEl('div', { className: 'panel' });
   wifiPanel.appendChild(makeEl('h2', { textContent: 'WiFi Configuration' }));
-  const configGrid = makeEl('div', { className: 'config-grid' });
-  [['Frequency', '2.4GHz +/- 20MHz'], ['Subcarriers', '30'], ['Sampling Rate', '100 Hz'], ['Total Cost', '$30']].forEach(([label, value]) => {
+  wifiPanel.appendChild(makeEl('p', { className: 'help-text', textContent: 'Auto-detected from this PC. Used when building firmware for ESP32.' }));
+
+  const wifiGrid = makeEl('div', { className: 'config-grid' });
+  const wifiFields = [
+    ['SSID', 'wifi-ssid', 'Detecting...'],
+    ['Password', 'wifi-pass', '...'],
+    ['Server IP', 'wifi-server-ip', '...'],
+    ['UDP Port', 'wifi-udp-port', '5005'],
+  ];
+  wifiFields.forEach(([label, id, val]) => {
     const item = makeEl('div', { className: 'config-item' });
     item.appendChild(makeEl('label', { textContent: label }));
-    item.appendChild(makeEl('div', { className: 'config-value', textContent: value }));
-    configGrid.appendChild(item);
+    item.appendChild(makeEl('div', { className: 'config-value', id: id, textContent: val }));
+    wifiGrid.appendChild(item);
   });
-  wifiPanel.appendChild(configGrid);
-  wifiPanel.appendChild(makeEl('h3', { className: 'sub-heading', textContent: 'Real-time CSI Data' }));
-  const csiDisplay = makeEl('div', { className: 'csi-display' });
-  // Amplitude row
-  const ampRow = makeEl('div', { className: 'csi-row' });
-  ampRow.appendChild(makeEl('span', { className: 'csi-label', textContent: 'Amplitude:' }));
-  const ampBar = makeEl('div', { className: 'csi-bar' });
-  const ampFill = makeEl('div', { className: 'csi-fill amplitude', id: 'csi-amp-bar' });
-  ampFill.style.width = '75%';
-  ampBar.appendChild(ampFill);
-  ampRow.appendChild(ampBar);
-  ampRow.appendChild(makeEl('span', { className: 'csi-value', id: 'csi-amp-val', textContent: '0.75' }));
-  csiDisplay.appendChild(ampRow);
-  // Phase row
-  const phaseRow = makeEl('div', { className: 'csi-row' });
-  phaseRow.appendChild(makeEl('span', { className: 'csi-label', textContent: 'Phase:' }));
-  const phaseBar = makeEl('div', { className: 'csi-bar' });
-  const phaseFill = makeEl('div', { className: 'csi-fill phase', id: 'csi-phase-bar' });
-  phaseFill.style.width = '60%';
-  phaseBar.appendChild(phaseFill);
-  phaseRow.appendChild(phaseBar);
-  phaseRow.appendChild(makeEl('span', { className: 'csi-value', id: 'csi-phase-val', textContent: '1.2pi' }));
-  csiDisplay.appendChild(phaseRow);
-  wifiPanel.appendChild(csiDisplay);
+  wifiPanel.appendChild(wifiGrid);
+
+  // One-click build button
+  const buildRow = makeEl('div', { style: 'margin-top:12px;display:flex;gap:8px;align-items:center' });
+  const nodeInput = makeEl('input', { id: 'build-node-ids', value: '1,2', style: 'width:60px;padding:4px;background:#111;color:#ccc;border:1px solid #333;font-size:12px' });
+  nodeInput.title = 'Node IDs to build (comma-separated)';
+  buildRow.appendChild(makeEl('span', { textContent: 'Nodes:', style: 'color:#888;font-size:12px' }));
+  buildRow.appendChild(nodeInput);
+  const buildBtn = makeEl('button', { className: 'btn btn-primary', id: 'fw-build-btn', textContent: 'Build Firmware' });
+  buildRow.appendChild(buildBtn);
+  const buildStatus = makeEl('span', { id: 'fw-build-status', style: 'color:#888;font-size:11px;margin-left:8px' });
+  buildRow.appendChild(buildStatus);
+  wifiPanel.appendChild(buildRow);
+
+  wifiPanel.appendChild(makeEl('p', { className: 'help-text', style: 'margin-top:8px', textContent: 'Builds firmware with these WiFi credentials baked in. Then flash via Web Flasher below.' }));
+
   hwGrid.appendChild(wifiPanel);
   scroll.appendChild(hwGrid);
 
@@ -619,6 +619,63 @@ function initProfiles() {
   });
 }
 
+function initWifiConfig() {
+  // Auto-fetch WiFi config from server
+  fetch('/api/network/wifi').then(r => r.json()).then(data => {
+    const ssidEl = document.getElementById('wifi-ssid');
+    const passEl = document.getElementById('wifi-pass');
+    const ipEl = document.getElementById('wifi-server-ip');
+    if (ssidEl) ssidEl.textContent = data.ssid || 'Not detected';
+    if (passEl) passEl.textContent = data.password ? '••••••••' : 'Not found';
+    if (ipEl) ipEl.textContent = data.server_ip || 'Unknown';
+    if (ssidEl && data.detected) ssidEl.style.color = 'var(--accent-green, #0f0)';
+  }).catch(() => {});
+
+  // Build button
+  const buildBtn = document.getElementById('fw-build-btn');
+  const buildStatus = document.getElementById('fw-build-status');
+  if (!buildBtn) return;
+
+  buildBtn.addEventListener('click', () => {
+    const nodeIds = (document.getElementById('build-node-ids') || {}).value || '1,2';
+    buildBtn.disabled = true;
+    buildStatus.textContent = 'Building...';
+    buildStatus.style.color = '#ffaa00';
+
+    fetch('/api/firmware/build?node_ids=' + encodeURIComponent(nodeIds), { method: 'POST' })
+      .then(r => r.json())
+      .then(data => {
+        if (data.error) {
+          buildStatus.textContent = data.error;
+          buildStatus.style.color = '#ff4444';
+          buildBtn.disabled = false;
+          return;
+        }
+        buildStatus.textContent = 'Building firmware for nodes ' + nodeIds + '...';
+        // Poll for completion
+        const poll = setInterval(() => {
+          fetch('/api/firmware/status').then(r => r.json()).then(s => {
+            if (s.status === 'building') return;
+            clearInterval(poll);
+            buildBtn.disabled = false;
+            if (s.status === 'complete') {
+              buildStatus.textContent = 'Build complete! Ready to flash.';
+              buildStatus.style.color = 'var(--accent-green, #0f0)';
+            } else {
+              buildStatus.textContent = 'Build failed: ' + (s.error || 'unknown');
+              buildStatus.style.color = '#ff4444';
+            }
+          });
+        }, 3000);
+      })
+      .catch(err => {
+        buildStatus.textContent = 'Error: ' + err.message;
+        buildStatus.style.color = '#ff4444';
+        buildBtn.disabled = false;
+      });
+  });
+}
+
 function initFlasher() {
   const connectBtn = document.getElementById('flash-connect-btn');
   const flashBtn = document.getElementById('flash-start-btn');
@@ -964,6 +1021,7 @@ export default {
     initAntennaToggle();
     initPlacement();
     initProfiles();
+    initWifiConfig();
     initFlasher();
     initDataCollector();
     initCalibration();

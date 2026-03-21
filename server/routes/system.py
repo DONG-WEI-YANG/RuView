@@ -160,6 +160,71 @@ async def set_mode(mode: str, container: ServiceContainer = Depends(get_containe
     return {"status": "switched", "mode": mode}
 
 
+@router.get("/api/network/wifi")
+async def wifi_config():
+    """Auto-detect current WiFi SSID, password, and server IP from host PC."""
+    from server.wifi_detect import detect_wifi
+    return detect_wifi()
+
+
+@router.post("/api/firmware/build")
+async def firmware_build(
+    node_ids: str = "1,2",
+    container: ServiceContainer = Depends(get_container),
+):
+    """Build ESP32 firmware with auto-detected WiFi credentials.
+
+    Detects current WiFi from PC, bakes it into sdkconfig, builds via PlatformIO.
+    Query param node_ids: comma-separated node IDs (default "1,2").
+    """
+    import threading
+    from server.wifi_detect import detect_wifi
+    from server.firmware_builder import build_all_nodes
+
+    wifi = detect_wifi()
+    if not wifi["detected"]:
+        return JSONResponse({"error": "WiFi not detected on this PC"}, status_code=400)
+
+    ids = [int(x.strip()) for x in node_ids.split(",") if x.strip().isdigit()]
+    if not ids:
+        return JSONResponse({"error": "No valid node IDs"}, status_code=400)
+
+    # Run build in background (takes ~30s)
+    if getattr(container, '_fw_building', False):
+        return JSONResponse({"error": "Build already in progress"}, status_code=409)
+
+    container._fw_building = True
+    container._fw_build_result = None
+
+    def do_build():
+        try:
+            result = build_all_nodes(
+                ssid=wifi["ssid"],
+                password=wifi["password"],
+                server_ip=wifi["server_ip"],
+                node_ids=ids,
+            )
+            container._fw_build_result = {"status": "complete", "wifi": wifi, "nodes": result}
+        except Exception as e:
+            container._fw_build_result = {"status": "failed", "error": str(e)}
+        finally:
+            container._fw_building = False
+
+    threading.Thread(target=do_build, daemon=True).start()
+    return {"status": "building", "wifi_ssid": wifi["ssid"], "server_ip": wifi["server_ip"], "node_ids": ids}
+
+
+@router.get("/api/firmware/status")
+async def firmware_build_status(container: ServiceContainer = Depends(get_container)):
+    """Check firmware build progress."""
+    if getattr(container, '_fw_building', False):
+        return {"status": "building"}
+    result = getattr(container, '_fw_build_result', None)
+    if result:
+        return result
+    return {"status": "idle"}
+
+
 @router.get("/api/signal-quality")
 async def signal_quality(container: ServiceContainer = Depends(get_container)):
     """Per-node signal quality, overall grade, and environment tips."""
