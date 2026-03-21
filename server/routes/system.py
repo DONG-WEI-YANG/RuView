@@ -59,6 +59,7 @@ async def status(container: ServiceContainer = Depends(get_container)):
         "storage": container.storage.storage.get_stats(),
         "calibration": cal.get_status(),
         "notifications_enabled": container.notification.notifier.enabled,
+        "scene_mode": ps.scene_mode,
     }
 
 
@@ -128,3 +129,24 @@ async def set_mode(mode: str, container: ServiceContainer = Depends(get_containe
     else:
         await container.pipeline_svc.stop_simulation()
     return {"status": "switched", "mode": mode}
+
+
+@router.get("/api/system/scene")
+async def get_scene(container: ServiceContainer = Depends(get_container)):
+    ps = container.pipeline_svc
+    return {
+        "scene_mode": ps.scene_mode,
+        **ps.scene_config,
+    }
+
+
+@router.post("/api/system/scene")
+async def set_scene(scene: str, container: ServiceContainer = Depends(get_container)):
+    from server.services.pipeline_service import SCENE_MODES
+    if scene not in SCENE_MODES:
+        return JSONResponse(
+            {"error": f"Unknown scene. Choose from: {list(SCENE_MODES.keys())}"},
+            status_code=400,
+        )
+    result = container.pipeline_svc.set_scene_mode(scene)
+    return result

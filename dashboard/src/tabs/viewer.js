@@ -154,8 +154,54 @@ function buildDOM(el) {
   nodesCard.appendChild(nodeList);
   aside.appendChild(nodesCard);
 
+  // ── Scene mode toggle ────────────────────────────────────
+  const sceneCard = document.createElement('div');
+  sceneCard.id = 'scene-card';
+  sceneCard.className = 'card';
+  sceneCard.appendChild(makeEl('h3', { textContent: 'Scene Mode' }));
+
+  const toggleWrap = document.createElement('div');
+  toggleWrap.style.cssText = 'display:flex;gap:4px;margin-top:6px';
+
+  const btnSafety = document.createElement('button');
+  btnSafety.id = 'scene-btn-safety';
+  btnSafety.textContent = '🛡 Safety';
+  btnSafety.className = 'scene-toggle active';
+  btnSafety.onclick = () => switchScene('safety');
+
+  const btnFitness = document.createElement('button');
+  btnFitness.id = 'scene-btn-fitness';
+  btnFitness.textContent = '🏃 Fitness';
+  btnFitness.className = 'scene-toggle';
+  btnFitness.onclick = () => switchScene('fitness');
+
+  toggleWrap.appendChild(btnSafety);
+  toggleWrap.appendChild(btnFitness);
+  sceneCard.appendChild(toggleWrap);
+
+  const sceneDesc = makeEl('p', { id: 'scene-desc', textContent: 'Fall detection, apnea monitoring' });
+  sceneDesc.style.cssText = 'font-size:10px;color:var(--text-secondary,#888);margin-top:4px';
+  sceneCard.appendChild(sceneDesc);
+  aside.appendChild(sceneCard);
+
   main.appendChild(aside);
   el.appendChild(main);
+}
+
+/** Switch scene mode via API and update toggle UI. */
+function switchScene(mode) {
+  fetch(`/api/system/scene?scene=${mode}`, { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) return;
+      const btnS = document.getElementById('scene-btn-safety');
+      const btnF = document.getElementById('scene-btn-fitness');
+      const desc = document.getElementById('scene-desc');
+      if (btnS) btnS.className = 'scene-toggle' + (mode === 'safety' ? ' active' : '');
+      if (btnF) btnF.className = 'scene-toggle' + (mode === 'fitness' ? ' active' : '');
+      if (desc) desc.textContent = data.description || '';
+    })
+    .catch(() => {});
 }
 
 /** Helper: create an element with optional property overrides. */

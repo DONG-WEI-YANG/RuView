@@ -22,6 +22,29 @@ logger = logging.getLogger(__name__)
 
 
 
+# ── Scene mode presets ─────────────────────────────────────
+SCENE_MODES = {
+    "safety": {
+        "description": "Fall detection, apnea monitoring, inactivity alerts",
+        "fall_threshold": 0.6,        # more sensitive
+        "fall_alert_cooldown": 15,    # faster re-alert
+        "inactivity_timeout": 300,    # 5 min no-motion → alert
+        "notify_on_fall": True,
+        "notify_on_apnea": True,
+        "track_reps": False,
+    },
+    "fitness": {
+        "description": "Activity tracking, rep counting, posture assessment",
+        "fall_threshold": 0.95,       # very strict (avoid false alarms during exercise)
+        "fall_alert_cooldown": 120,   # suppress during workout
+        "inactivity_timeout": 0,      # disabled
+        "notify_on_fall": False,      # don't spam during burpees
+        "notify_on_apnea": False,
+        "track_reps": True,
+    },
+}
+
+
 # ── Node-count → strategy mapping ──────────────────────────
 # Automatically selected based on how many ESP32 nodes are detected.
 STRATEGY_TABLE = {
@@ -67,6 +90,37 @@ class PipelineService:
         self._strategy_desc: str = "Waiting for nodes..."
         self._active_node_count: int = 0
         self._DETECTION_WINDOW_SEC = 5.0  # lock after 5s of data
+
+        # ── Scene mode ─────────────────────────────────
+        self._scene_mode: str = settings.scene_mode
+        self._scene_config: dict = SCENE_MODES.get(self._scene_mode, SCENE_MODES["safety"])
+        self._inactivity_start: float = 0.0
+        self._apply_scene_mode()
+
+    def _apply_scene_mode(self) -> None:
+        """Apply scene-mode presets to fall detector and settings."""
+        cfg = self._scene_config
+        self.fall_detector.threshold = cfg["fall_threshold"]
+        self.fall_detector.cooldown_sec = cfg["fall_alert_cooldown"]
+        logger.info("Scene mode: %s — %s", self._scene_mode, cfg["description"])
+
+    @property
+    def scene_mode(self) -> str:
+        return self._scene_mode
+
+    @property
+    def scene_config(self) -> dict:
+        return self._scene_config
+
+    def set_scene_mode(self, mode: str) -> dict:
+        """Switch between safety/fitness modes. Returns new config."""
+        if mode not in SCENE_MODES:
+            return {"error": f"Unknown mode. Choose from: {list(SCENE_MODES.keys())}"}
+        self._scene_mode = mode
+        self._scene_config = SCENE_MODES[mode]
+        self.settings.scene_mode = mode
+        self._apply_scene_mode()
+        return {"status": "switched", "scene_mode": mode, **self._scene_config}
 
     @property
     def detected_nodes(self) -> int:

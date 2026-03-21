@@ -120,3 +120,21 @@
     color: var(--text-secondary);
     line-height: 1.5;
 }
+
+/* ── Scene Mode Toggle ───────────────────────────────────── */
+.scene-toggle {
+    flex: 1;
+    padding: 6px 8px;
+    background: transparent;
+    border: 1px solid var(--border-color, #333);
+    color: var(--text-secondary, #888);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.scene-toggle.active {
+    background: var(--accent-green, #0f0);
+    color: #000;
+    border-color: var(--accent-green, #0f0);
+    font-weight: bold;
+}

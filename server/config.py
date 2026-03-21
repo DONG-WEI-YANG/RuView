@@ -124,18 +124,43 @@ class Settings(BaseSettings):
     num_joints: int = 24
     model_path: str = "models/pose_model.pth"
 
+    # Scene mode: "safety" or "fitness"
+    scene_mode: str = "safety"
+
     # Fall detection
     fall_threshold: float = 0.8
     fall_alert_cooldown: int = 30  # seconds
 
     # Storage
     db_path: str = "data/wifi_body.db"
+    
+    # Simulation
+    simulate: bool = False
+
+    # Node Positioning (JSON string: {node_id: [x, y, z]})
+    # Default: 4 nodes at corners of 4x4m room
+    node_positions: Dict[int, list[float]] = field(default_factory=lambda: {
+        1: [2.0, 1.5, 2.0],   # Front-Right (High)
+        2: [2.0, 1.0, -2.0],  # Back-Right (Mid)
+        3: [-2.0, 0.5, -2.0], # Back-Left (Low)
+        4: [-2.0, 1.0, 2.0],  # Front-Left (Mid)
+    })
+
+    # Room Geometry (for visualization context)
+    # Origin (0,0,0) is center of room on floor
+    room_width: float = 4.0  # X axis (meters)
+    room_depth: float = 4.0  # Z axis (meters)
+    room_height: float = 2.8 # Y axis (meters)
 
     # Push notifications (set via env vars)
     notify_webhook_url: str = ""
     notify_line_token: str = ""
     notify_telegram_bot_token: str = ""
     notify_telegram_chat_id: str = ""
+    
+    # Runtime references (injected by app)
+    calibration_manager: object = None
+    vitals_extractor: object = None
 
     def apply_hardware_profile(self) -> HardwareProfile | None:
         """Apply hardware profile settings, returning the profile used."""
