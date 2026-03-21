@@ -157,17 +157,18 @@ def update_sdkconfig(
     if defaults.exists():
         lines = defaults.read_text(encoding="utf-8", errors="replace").splitlines()
 
-    # Remove old WiFi/server/target lines
+    # Remove old WiFi/server/target lines (both CSI_ and non-CSI_ prefixed)
     remove_keys = [
         "CONFIG_WIFI_SSID", "CONFIG_WIFI_PASSWORD",
+        "CONFIG_CSI_WIFI_SSID", "CONFIG_CSI_WIFI_PASSWORD",
         "CONFIG_CSI_TARGET_IP", "CONFIG_CSI_TARGET_PORT",
         "CONFIG_CSI_NODE_ID", "CONFIG_IDF_TARGET",
     ]
     lines = [l for l in lines if not any(k in l for k in remove_keys)]
 
     lines.extend([
-        f'CONFIG_WIFI_SSID="{ssid}"',
-        f'CONFIG_WIFI_PASSWORD="{password}"',
+        f'CONFIG_CSI_WIFI_SSID="{ssid}"',
+        f'CONFIG_CSI_WIFI_PASSWORD="{password}"',
         f'CONFIG_CSI_TARGET_IP="{server_ip}"',
         f'CONFIG_CSI_TARGET_PORT={udp_port}',
         f'CONFIG_CSI_NODE_ID={node_id}',
