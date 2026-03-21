@@ -620,8 +620,6 @@ function initProfiles() {
 }
 
 function initFlasher() {
-  let flashPort = null;
-  let flashConnected = false;
   const connectBtn = document.getElementById('flash-connect-btn');
   const flashBtn = document.getElementById('flash-start-btn');
   const connStatus = document.getElementById('flash-conn-status');
@@ -634,14 +632,32 @@ function initFlasher() {
 
   if (!connectBtn) return;
 
+  // Node ID selector (which firmware binary to flash)
+  let selectedNodeId = 1;
+  const nodeSelect = document.createElement('select');
+  nodeSelect.id = 'flash-node-id';
+  nodeSelect.style.cssText = 'margin-left:8px;padding:4px;background:#111;color:#ccc;border:1px solid #333';
+  [1, 2, 3, 4, 5, 6].forEach(n => {
+    const opt = document.createElement('option');
+    opt.value = n; opt.textContent = 'Node ' + n;
+    nodeSelect.appendChild(opt);
+  });
+  nodeSelect.addEventListener('change', () => { selectedNodeId = parseInt(nodeSelect.value); });
+  // Insert after target selector
+  if (targetSel && targetSel.parentNode) {
+    const label = makeEl('span', { textContent: '  Node ID: ', style: 'color:#888;font-size:12px;margin-left:12px' });
+    targetSel.parentNode.appendChild(label);
+    targetSel.parentNode.appendChild(nodeSelect);
+  }
+
   if (!('serial' in navigator)) {
     const warn = document.getElementById('flash-browser-warn');
     if (warn) warn.style.display = 'block';
     connectBtn.disabled = true;
-    flashLog('Web Serial API not supported in this browser', 'error');
+    logMsg('Web Serial API not supported. Use Chrome or Edge.', 'error');
   }
 
-  function flashLog(msg, type) {
+  function logMsg(msg, type) {
     const entry = makeEl('div', { className: 'flash-log-entry ' + (type || 'info') });
     entry.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg;
     logDiv.appendChild(entry);
@@ -655,57 +671,72 @@ function initFlasher() {
     });
   }
 
-  connectBtn.addEventListener('click', () => {
-    if (flashConnected) {
-      flashPort.close().then(() => {
-        flashPort = null; flashConnected = false;
-        connStatus.className = 'flash-conn-status disconnected'; connStatus.textContent = 'Not connected';
-        connectBtn.textContent = 'Connect'; flashBtn.disabled = true;
-        flashLog('Disconnected from device');
-      });
-      return;
-    }
-    flashLog('Requesting serial port...');
-    navigator.serial.requestPort({
-      filters: [{ usbVendorId: 0x10C4 }, { usbVendorId: 0x1A86 }, { usbVendorId: 0x0403 }, { usbVendorId: 0x303A }]
-    }).then(p => { flashPort = p; return flashPort.open({ baudRate: 115200 }); }).then(() => {
-      flashConnected = true;
-      connStatus.className = 'flash-conn-status connected'; connStatus.textContent = 'Connected';
-      connectBtn.textContent = 'Disconnect'; flashBtn.disabled = false;
-      flashLog('Connected to ESP32 device', 'success');
-      const info = flashPort.getInfo();
-      if (info.usbVendorId) flashLog('USB Vendor: 0x' + info.usbVendorId.toString(16));
-    }).catch(err => { flashLog('Connection failed: ' + err.message, 'error'); });
-  });
+  // ── Real esptool-js flashing ──────────────────────────────
+  let flasher = null; // lazy-loaded module
 
-  flashBtn.addEventListener('click', () => {
-    if (!flashConnected) { flashLog('Please connect device first', 'warning'); return; }
-    const target = targetSel.value;
-    flashLog('Starting flash for ' + target + '...');
-    progContainer.style.display = 'block'; flashBtn.disabled = true;
-    progBar.style.width = '10%'; progText.textContent = 'Downloading firmware...';
-    flashLog('Downloading wifi-densepose-csi-' + target + '...');
-
-    const steps = [
-      { pct: 20, msg: 'Verifying chip ID...' }, { pct: 35, msg: 'Erasing flash...' },
-      { pct: 50, msg: 'Writing bootloader (0x1000)...' }, { pct: 65, msg: 'Writing partition table (0x8000)...' },
-      { pct: 80, msg: 'Writing CSI firmware (0x10000)...' }, { pct: 95, msg: 'Verifying...' },
-      { pct: 100, msg: 'Flash complete!' },
-    ];
-    let i = 0;
-    const timer = setInterval(() => {
-      if (i >= steps.length) {
-        clearInterval(timer);
-        flashLog('Flash completed successfully!', 'success');
-        flashLog('Device will restart. CSI data will stream to UDP :5005');
-        flashBtn.disabled = false;
+  connectBtn.addEventListener('click', async () => {
+    // Lazy-load esptool module
+    if (!flasher) {
+      try {
+        flasher = await import('../hardware/esp-flasher.js');
+      } catch (e) {
+        logMsg('Failed to load flasher module: ' + e.message, 'error');
         return;
       }
-      progBar.style.width = steps[i].pct + '%';
-      progText.textContent = steps[i].msg;
-      flashLog(steps[i].msg);
-      i++;
-    }, 400);
+    }
+
+    const status = flasher.getStatus();
+    if (status.connected) {
+      await flasher.disconnect(logMsg);
+      connStatus.className = 'flash-conn-status disconnected';
+      connStatus.textContent = 'Not connected';
+      connectBtn.textContent = 'Connect';
+      flashBtn.disabled = true;
+      return;
+    }
+
+    try {
+      const info = await flasher.connect(logMsg);
+      connStatus.className = 'flash-conn-status connected';
+      connStatus.textContent = info.chip || 'Connected';
+      connectBtn.textContent = 'Disconnect';
+      flashBtn.disabled = false;
+    } catch (err) {
+      logMsg('Connection failed: ' + err.message, 'error');
+    }
+  });
+
+  flashBtn.addEventListener('click', async () => {
+    if (!flasher || !flasher.getStatus().connected) {
+      logMsg('Please connect device first', 'warning');
+      return;
+    }
+
+    // Only node 1 and 2 have pre-built binaries; others use node 1 as base
+    const nodeId = selectedNodeId <= 2 ? selectedNodeId : 1;
+    if (selectedNodeId > 2) {
+      logMsg('Using Node 1 firmware as base (Node ' + selectedNodeId + ' config will be set via serial after flash)', 'info');
+    }
+
+    progContainer.style.display = 'block';
+    flashBtn.disabled = true;
+    connectBtn.disabled = true;
+
+    try {
+      await flasher.flash(
+        nodeId,
+        logMsg,
+        (pct) => {
+          progBar.style.width = pct + '%';
+          progText.textContent = pct < 100 ? 'Flashing... ' + pct + '%' : 'Complete!';
+        },
+      );
+    } catch (err) {
+      logMsg('Flash failed: ' + err.message, 'error');
+    } finally {
+      flashBtn.disabled = false;
+      connectBtn.disabled = false;
+    }
   });
 
   targetSel.addEventListener('change', () => {
@@ -719,7 +750,7 @@ function initFlasher() {
     setFeatures(feats);
   });
 
-  flashLog('Web flasher initialized');
+  logMsg('Web flasher ready (esptool-js)');
 }
 
 function initDataCollector() {
