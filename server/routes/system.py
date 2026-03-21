@@ -46,6 +46,9 @@ async def status(container: ServiceContainer = Depends(get_container)):
             "inference_active": has_model and ps.csi_frames_received > 0,
             "hardware_profile": s.hardware_profile,
             "is_simulating": s.simulate,
+            "detected_nodes": ps.detected_nodes,
+            "strategy": ps.strategy,
+            "strategy_description": ps.strategy_description,
         },
         "node_positions": s.node_positions,
         "room_dimensions": {

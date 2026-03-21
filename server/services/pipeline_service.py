@@ -21,6 +21,24 @@ from server.services.event_emitter import EventEmitter
 logger = logging.getLogger(__name__)
 
 
+
+# ── Node-count → strategy mapping ──────────────────────────
+# Automatically selected based on how many ESP32 nodes are detected.
+STRATEGY_TABLE = {
+    # (min_nodes, max_nodes): (strategy_name, description)
+    (1, 2): ("basic", "Presence detection + vital signs only"),
+    (3, 4): ("spatial", "Pose estimation + spatial diversity"),
+    (5, 8): ("multiview", "Multi-view fusion + multi-person tracking"),
+}
+
+
+def _strategy_for_nodes(n: int) -> tuple[str, str]:
+    for (lo, hi), (name, desc) in STRATEGY_TABLE.items():
+        if lo <= n <= hi:
+            return name, desc
+    return "basic", "Fallback"
+
+
 class PipelineService:
     def __init__(
         self,
@@ -41,10 +59,63 @@ class PipelineService:
         self._node_frames: dict[int, CSIFrame] = {}
         self._sim_task: asyncio.Task | None = None
 
+        # ── Auto node detection ────────────────────────────
+        self._detected_node_ids: set[int] = set()
+        self._detection_locked: bool = False
+        self._detection_start: float = 0.0
+        self._strategy: str = "basic"
+        self._strategy_desc: str = "Waiting for nodes..."
+        self._active_node_count: int = 0
+        self._DETECTION_WINDOW_SEC = 5.0  # lock after 5s of data
+
+    @property
+    def detected_nodes(self) -> int:
+        return self._active_node_count
+
+    @property
+    def strategy(self) -> str:
+        return self._strategy
+
+    @property
+    def strategy_description(self) -> str:
+        return self._strategy_desc
+
+    def _auto_detect(self, frame: CSIFrame) -> None:
+        """Track unique node IDs; lock strategy after detection window."""
+        if self._detection_locked:
+            # Still track new nodes even after lock
+            if frame.node_id not in self._detected_node_ids:
+                self._detected_node_ids.add(frame.node_id)
+                self._update_strategy()
+            return
+
+        now = time.time()
+        if self._detection_start == 0.0:
+            self._detection_start = now
+
+        self._detected_node_ids.add(frame.node_id)
+        self._update_strategy()
+
+        if now - self._detection_start >= self._DETECTION_WINDOW_SEC:
+            self._detection_locked = True
+            logger.info(
+                "Node auto-detection locked: %d nodes → strategy '%s' (%s)",
+                self._active_node_count, self._strategy, self._strategy_desc,
+            )
+
+    def _update_strategy(self) -> None:
+        n = len(self._detected_node_ids)
+        self._active_node_count = n
+        self._strategy, self._strategy_desc = _strategy_for_nodes(n)
+        # Update settings.max_nodes so model input_dim adapts
+        if n > 0:
+            self.settings.max_nodes = max(self.settings.max_nodes, n)
+
     def on_frame(self, frame: CSIFrame, trigger_pipeline: bool = True) -> None:
         """Process an incoming CSI frame."""
         self._node_frames[frame.node_id] = frame
         self.csi_frames_received += 1
+        self._auto_detect(frame)
 
         # Feed to pipeline
         if self.pipeline is not None:

@@ -63,27 +63,60 @@ class PosePipeline:
     def _run_inference(self):
         try:
             window_list = list(self._window)
-            processed = self._prepare_input(window_list)
+            
+            # Use calibration profile if available
+            bg_profile = None
+            if self.settings.calibration_manager:
+                bg_profile = self.settings.calibration_manager.get_background_profile()
+
+            processed = self._prepare_input(window_list, background_profile=bg_profile)
             tensor = torch.from_numpy(processed).unsqueeze(0)
             with torch.no_grad():
                 output = self.model(tensor)
             joints = output.detach().cpu().numpy()[0]
             self.latest_joints = joints
-            self.fall_detector.update(joints)
+            
+            # Pass vitals to fall detector for dual verification
+            vitals_data = None
+            if self.settings.vitals_extractor:
+                vitals_data = self.settings.vitals_extractor.get_latest()
+                
+            self.fall_detector.update(joints, vitals=vitals_data)
             self.fitness_tracker.update(joints)
         except Exception as e:
             logger.error("Inference error: %s", e)
 
-    def _prepare_input(self, window: list[dict[int, np.ndarray]]) -> np.ndarray:
-        """Prepare model input, falling back to normalize-only for short windows."""
+    def _prepare_input(self, window: list[dict[int, np.ndarray]], background_profile=None) -> np.ndarray:
+        """Prepare model input, padding to fixed width for consistent model input_dim.
+
+        Falls back to normalize-only for short windows.
+        """
         try:
-            return self.processor.prepare_model_input(window)
+            prepared = self.processor.prepare_model_input(window, background_profile=background_profile)
         except ValueError:
             # Window too short for bandpass filter; skip filtering
             stacked = np.array(
                 [self.processor.fuse_nodes(frame) for frame in window]
             )
-            return self.processor.normalize(stacked)
+            prepared = self.processor.normalize(stacked)
+
+        # Pad or truncate to model's expected input_dim
+        if self.model is not None:
+            expected = None
+            try:
+                first_param = next(self.model.parameters())
+                expected = int(first_param.shape[1])
+            except (StopIteration, TypeError, AttributeError):
+                pass
+
+            if expected is not None:
+                actual = prepared.shape[1]
+                if actual < expected:
+                    prepared = np.pad(prepared, ((0, 0), (0, expected - actual)))
+                elif actual > expected:
+                    prepared = prepared[:, :expected]
+
+        return prepared
 
     @property
     def is_fallen(self) -> bool:
