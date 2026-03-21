@@ -167,19 +167,52 @@ async def wifi_config():
     return detect_wifi()
 
 
+@router.get("/api/firmware/detect")
+async def firmware_detect_devices():
+    """Auto-detect all connected ESP32 boards — chip type, port, board name."""
+    from server.firmware_builder import detect_all_ports
+    devices = detect_all_ports()
+    return {"devices": devices, "count": len(devices)}
+
+
+@router.post("/api/firmware/auto")
+async def firmware_auto_build_flash(
+    port: str,
+    node_id: int = 1,
+    container: ServiceContainer = Depends(get_container),
+):
+    """One-click: detect chip → auto WiFi → build → flash. Runs in background."""
+    import threading
+    from server.firmware_builder import auto_build_and_flash
+
+    if getattr(container, '_fw_building', False):
+        return JSONResponse({"error": "Build already in progress"}, status_code=409)
+
+    container._fw_building = True
+    container._fw_build_result = None
+
+    def do_all():
+        try:
+            result = auto_build_and_flash(port=port, node_id=node_id)
+            container._fw_build_result = {"status": "complete" if result["success"] else "failed", **result}
+        except Exception as e:
+            container._fw_build_result = {"status": "failed", "error": str(e)}
+        finally:
+            container._fw_building = False
+
+    threading.Thread(target=do_all, daemon=True).start()
+    return {"status": "started", "port": port, "node_id": node_id}
+
+
 @router.post("/api/firmware/build")
 async def firmware_build(
     node_ids: str = "1,2",
     container: ServiceContainer = Depends(get_container),
 ):
-    """Build ESP32 firmware with auto-detected WiFi credentials.
-
-    Detects current WiFi from PC, bakes it into sdkconfig, builds via PlatformIO.
-    Query param node_ids: comma-separated node IDs (default "1,2").
-    """
+    """Build firmware with auto-detected WiFi (without flashing)."""
     import threading
     from server.wifi_detect import detect_wifi
-    from server.firmware_builder import build_all_nodes
+    from server.firmware_builder import build_all_nodes, detect_all_ports, update_platformio_ini, clean_build
 
     wifi = detect_wifi()
     if not wifi["detected"]:
@@ -189,7 +222,15 @@ async def firmware_build(
     if not ids:
         return JSONResponse({"error": "No valid node IDs"}, status_code=400)
 
-    # Run build in background (takes ~30s)
+    # Auto-detect chip from first connected device
+    devices = detect_all_ports()
+    chip = "esp32c3"  # fallback
+    port = "COM10"
+    if devices:
+        dev = devices[0]
+        chip = dev.get("chip", chip)
+        port = dev.get("port", port)
+
     if getattr(container, '_fw_building', False):
         return JSONResponse({"error": "Build already in progress"}, status_code=409)
 
@@ -198,25 +239,28 @@ async def firmware_build(
 
     def do_build():
         try:
+            for nid in ids:
+                update_platformio_ini(chip, port, nid)
+                clean_build(nid)
             result = build_all_nodes(
-                ssid=wifi["ssid"],
-                password=wifi["password"],
-                server_ip=wifi["server_ip"],
-                node_ids=ids,
+                ssid=wifi["ssid"], password=wifi["password"],
+                server_ip=wifi["server_ip"], node_ids=ids,
             )
-            container._fw_build_result = {"status": "complete", "wifi": wifi, "nodes": result}
+            container._fw_build_result = {
+                "status": "complete", "wifi": wifi, "chip": chip, "nodes": result,
+            }
         except Exception as e:
             container._fw_build_result = {"status": "failed", "error": str(e)}
         finally:
             container._fw_building = False
 
     threading.Thread(target=do_build, daemon=True).start()
-    return {"status": "building", "wifi_ssid": wifi["ssid"], "server_ip": wifi["server_ip"], "node_ids": ids}
+    return {"status": "building", "wifi_ssid": wifi["ssid"], "chip": chip, "node_ids": ids}
 
 
 @router.get("/api/firmware/status")
 async def firmware_build_status(container: ServiceContainer = Depends(get_container)):
-    """Check firmware build progress."""
+    """Check firmware build/flash progress."""
     if getattr(container, '_fw_building', False):
         return {"status": "building"}
     result = getattr(container, '_fw_build_result', None)

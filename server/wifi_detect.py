@@ -46,7 +46,8 @@ def detect_wifi() -> dict:
 def _detect_windows(result: dict) -> None:
     # Get SSID
     out = subprocess.check_output(
-        ["netsh", "wlan", "show", "interfaces"], text=True, timeout=5
+        ["netsh", "wlan", "show", "interfaces"],
+        timeout=5, encoding="utf-8", errors="replace",
     )
     for line in out.splitlines():
         if "SSID" in line and "BSSID" not in line:
@@ -61,7 +62,7 @@ def _detect_windows(result: dict) -> None:
     # Get password
     out = subprocess.check_output(
         ["netsh", "wlan", "show", "profile", f'name={result["ssid"]}', "key=clear"],
-        text=True, timeout=5,
+        timeout=5, encoding="utf-8", errors="replace",
     )
     for line in out.splitlines():
         # Match English "Key Content" or Chinese "金鑰內容"
