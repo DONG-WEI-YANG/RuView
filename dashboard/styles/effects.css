@@ -47,6 +47,36 @@ body::after {
     100% { top: 100%; }
 }
 
+/* ── Value Transitions (smooth number/bar updates) ────── */
+.hud-value, .health-value, .hud-label {
+    transition: color 0.3s ease;
+}
+.health-bar-fill, .mini-bar-fill, .cal-progress-fill {
+    transition: width 0.4s ease-out;
+}
+
+/* ── Loading Spinner ──────────────────────────────────── */
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-spinner {
+    display: inline-block;
+    width: 20px; height: 20px;
+    border: 2px solid #333;
+    border-top-color: var(--text-primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+.loading-overlay {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.7);
+    z-index: 5;
+}
+
+/* ── Connection Status Transitions ────────────────────── */
+#connection-status, #mode-badge {
+    transition: all 0.3s ease;
+}
+
 /* ── Neon Glow Utilities ───────────────────────────────── */
 .glow-amber {
     text-shadow: 0 0 5px var(--text-primary), 0 0 10px var(--text-primary);

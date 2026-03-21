@@ -18,15 +18,8 @@ def detect_wifi() -> dict:
     """Return {"ssid": str, "password": str, "server_ip": str, "detected": bool}."""
     result = {"ssid": "", "password": "", "server_ip": "", "detected": False}
 
-    # Server IP
-    try:
-        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
-            ip = info[4][0]
-            if not ip.startswith("127."):
-                result["server_ip"] = ip
-                break
-    except Exception:
-        pass
+    # Server IP — prefer the WiFi adapter's IP over virtual adapters (Hyper-V, WSL, etc.)
+    result["server_ip"] = _detect_wifi_ip()
 
     system = platform.system()
     try:
@@ -41,6 +34,60 @@ def detect_wifi() -> dict:
 
     result["detected"] = bool(result["ssid"])
     return result
+
+
+def _detect_wifi_ip() -> str:
+    """Get the IP address of the WiFi adapter, avoiding virtual adapters."""
+    system = platform.system()
+
+    if system == "Windows":
+        # Use netsh to find the WiFi adapter's IP specifically
+        try:
+            out = subprocess.check_output(
+                ["netsh", "interface", "ipv4", "show", "addresses", "Wi-Fi"],
+                timeout=5, encoding="utf-8", errors="replace",
+            )
+            for line in out.splitlines():
+                m = re.search(r"IP Address[:：]\s*([\d.]+)", line, re.IGNORECASE)
+                if not m:
+                    m = re.search(r"IP 位址[:：]\s*([\d.]+)", line)  # Chinese Windows
+                if m:
+                    return m.group(1)
+        except Exception:
+            pass
+
+    elif system == "Darwin":
+        try:
+            out = subprocess.check_output(
+                ["ipconfig", "getifaddr", "en0"], text=True, timeout=5,
+            )
+            ip = out.strip()
+            if ip:
+                return ip
+        except Exception:
+            pass
+
+    else:  # Linux
+        try:
+            out = subprocess.check_output(
+                ["hostname", "-I"], text=True, timeout=5,
+            )
+            for ip in out.strip().split():
+                if not ip.startswith("127."):
+                    return ip
+        except Exception:
+            pass
+
+    # Fallback: first non-loopback, non-virtual IP
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ip = info[4][0]
+            if ip.startswith("127.") or ip.startswith("172.16.") or ip.startswith("172.17."):
+                continue  # skip loopback and common virtual adapter ranges
+            return ip
+    except Exception:
+        pass
+    return ""
 
 
 def _detect_windows(result: dict) -> None:

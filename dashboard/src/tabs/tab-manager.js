@@ -14,14 +14,32 @@ export function registerTab(controller) {
 }
 
 export function switchTab(tabId) {
-  if (!tabs[tabId]) return;
+  if (!tabs[tabId] || tabId === activeTabId) return;
+
+  // Deactivate old tab
   if (activeTabId && tabs[activeTabId]) {
+    const oldPanel = document.getElementById('tab-' + activeTabId);
+    if (oldPanel) oldPanel.classList.remove('active');
     tabs[activeTabId].deactivate();
   }
+
+  // Init if first time
   if (!initialized.has(tabId)) {
     tabs[tabId].init();
     initialized.add(tabId);
   }
+
+  // Activate new tab with fade-in
+  const newPanel = document.getElementById('tab-' + tabId);
+  if (newPanel) {
+    newPanel.style.opacity = '0';
+    newPanel.classList.add('active');
+    // Trigger reflow then fade in
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => { newPanel.style.opacity = '1'; });
+    });
+  }
+
   tabs[tabId].activate();
   activeTabId = tabId;
   bus.emit('tab:changed', tabId);
