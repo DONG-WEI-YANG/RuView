@@ -66,6 +66,7 @@ async def status(container: ServiceContainer = Depends(get_container)):
             "hardware_profile": s.hardware_profile,
             "is_simulating": s.simulate,
             "detected_nodes": ps.detected_nodes,
+            "real_nodes": ps.real_node_count,
             "strategy": ps.strategy,
             "strategy_description": ps.strategy_description,
         },

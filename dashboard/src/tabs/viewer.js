@@ -94,11 +94,27 @@ function buildDOM(el) {
   s0.appendChild(makeEl('div', { textContent: '📡', style: 'font-size:48px;opacity:0.5;margin-bottom:12px' }));
   s0.appendChild(makeEl('div', { textContent: 'Connect ESP32 Nodes', style: 'font-size:16px;color:#ccc;margin-bottom:8px;font-weight:bold' }));
   s0.appendChild(makeEl('div', { textContent: 'Power on your ESP32-S3 boards. They will auto-connect to WiFi and stream CSI data.', style: 'font-size:12px;color:#888;line-height:1.6;margin-bottom:12px' }));
-  const nodeCount = makeEl('div', { id: 'wizard-node-count', textContent: 'Detected: 0 nodes', style: 'font-size:14px;color:var(--accent-green,#0f0);margin-bottom:12px' });
+  const nodeCount = makeEl('div', { id: 'wizard-node-count', textContent: 'Scanning for hardware...', style: 'font-size:14px;color:#888;margin-bottom:12px' });
   s0.appendChild(nodeCount);
-  const skipBtn = makeEl('button', { textContent: 'Skip (use simulation)', id: 'wizard-skip' });
+
+  // Troubleshooting tips (shown when 0 real nodes after a few polls)
+  const troubleDiv = makeEl('div', { id: 'wizard-troubleshoot', style: 'display:none;font-size:11px;color:#888;text-align:left;line-height:1.8;margin:8px 0;padding:10px;border:1px solid #333;border-radius:4px' });
+  const troubleItems = [
+    '• Check USB cable is a data cable (not charge-only)',
+    '• Confirm ESP32 firmware is flashed (Hardware tab → Flash)',
+    '• Verify WiFi SSID/password match your hotspot',
+    '• Ensure server IP in firmware matches this PC',
+    '• Try pressing the RESET button on the board',
+  ];
+  troubleDiv.appendChild(makeEl('div', { textContent: 'No hardware detected. Troubleshooting:', style: 'color:#f80;margin-bottom:6px;font-weight:bold' }));
+  troubleItems.forEach(t => troubleDiv.appendChild(makeEl('div', { textContent: t })));
+  s0.appendChild(troubleDiv);
+
+  const skipBtn = makeEl('button', { textContent: 'Preview with demo data', id: 'wizard-skip' });
   skipBtn.style.cssText = 'padding:6px 16px;background:transparent;border:1px solid #555;color:#888;cursor:pointer;font-size:11px;margin-top:8px';
   s0.appendChild(skipBtn);
+  const skipHint = makeEl('div', { textContent: 'Server keeps listening for real hardware in the background', style: 'font-size:10px;color:#555;margin-top:4px' });
+  s0.appendChild(skipHint);
   stepContent.appendChild(s0);
 
   // -- Step 1: Place --
@@ -413,19 +429,39 @@ export default {
       advice.style.whiteSpace = 'pre-line';
     }
 
-    // Poll server for detected nodes
+    // Poll server for detected nodes (only count REAL hardware nodes)
+    let pollCount = 0;
     function pollNodes() {
+      pollCount++;
       fetch('/api/status').then(r => r.json()).then(data => {
         const ps = data.pipeline_status || {};
-        detectedNodes = ps.detected_nodes || Object.keys(data.nodes || {}).length;
+        const realNodes = ps.real_nodes || 0;
+        const isSimulating = ps.is_simulating || false;
+        detectedNodes = realNodes;
+
         const countEl = document.getElementById('wizard-node-count');
         if (countEl) {
-          countEl.textContent = 'Detected: ' + detectedNodes + ' node' + (detectedNodes !== 1 ? 's' : '');
-          countEl.style.color = detectedNodes > 0 ? 'var(--accent-green,#0f0)' : '#888';
+          if (realNodes > 0) {
+            countEl.textContent = 'Detected: ' + realNodes + ' hardware node' + (realNodes !== 1 ? 's' : '');
+            countEl.style.color = 'var(--accent-green,#0f0)';
+          } else if (isSimulating) {
+            countEl.textContent = 'Running in demo mode (no hardware detected)';
+            countEl.style.color = '#f80';
+          } else {
+            countEl.textContent = 'Scanning for hardware...';
+            countEl.style.color = '#888';
+          }
         }
-        // Auto-advance to step 1 when nodes detected
-        if (detectedNodes > 0 && wizardStep === 0) {
-          updatePlacementAdvice(detectedNodes);
+
+        // Show troubleshooting after 3 polls (~6s) with 0 real nodes
+        const troubleEl = document.getElementById('wizard-troubleshoot');
+        if (troubleEl) {
+          troubleEl.style.display = (realNodes === 0 && pollCount >= 3) ? 'block' : 'none';
+        }
+
+        // Auto-advance to step 1 only when REAL nodes detected
+        if (realNodes > 0 && wizardStep === 0) {
+          updatePlacementAdvice(realNodes);
           showWizardStep(1);
         }
         // Update summary
@@ -433,7 +469,8 @@ export default {
         if (summary) {
           const strategy = ps.strategy_description || '';
           const modelLine = ps.model_loaded ? '✓ Pose model loaded' : '△ Vital signs only (no pose model)';
-          summary.textContent = detectedNodes + ' nodes connected\nStrategy: ' + (ps.strategy || 'auto') + ' — ' + strategy + '\n' + modelLine;
+          const modeLabel = realNodes > 0 ? (realNodes + ' hardware nodes connected') : 'Demo mode (no hardware)';
+          summary.textContent = modeLabel + '\nStrategy: ' + (ps.strategy || 'auto') + ' — ' + strategy + '\n' + modelLine;
           summary.style.whiteSpace = 'pre-line';
         }
       }).catch(() => {});
@@ -441,14 +478,16 @@ export default {
     pollTimer = setInterval(pollNodes, 2000);
     pollNodes();
 
-    // Skip button → start simulation
+    // Skip button → frontend demo only (server stays in real mode, keeps listening for hardware)
     const skipEl = document.getElementById('wizard-skip');
     if (skipEl) skipEl.onclick = () => {
-      fetch('/api/system/mode?mode=simulation', { method: 'POST' }).then(() => {
-        const ov = document.getElementById('waiting-overlay');
-        if (ov) ov.style.display = 'none';
-        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-      }).catch(() => {});
+      // Start frontend demo data for visual preview
+      import('../simulation/demo-data.js').then(m => m.init());
+      // Hide wizard overlay
+      const ov = document.getElementById('waiting-overlay');
+      if (ov) ov.style.display = 'none';
+      // Keep polling — if real hardware comes online, switch to live data
+      bus.emit('mode:demo-preview', true);
     };
 
     // Step 1 → 2

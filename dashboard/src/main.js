@@ -76,26 +76,66 @@ client.connect();
 const statusEl = document.getElementById('connection-status');
 const modeEl = document.getElementById('mode-badge');
 
+// ── Mode state ────────────────────────────────────────────
+let currentMode = 'unknown'; // 'live' | 'demo' | 'unknown'
+
+function updateModeUI(mode, realNodes) {
+  currentMode = mode;
+  if (mode === 'demo') {
+    modeEl.textContent = 'DEMO';
+    modeEl.className = 'demo';
+    modeEl.title = 'Click to switch to LIVE mode';
+  } else {
+    modeEl.textContent = realNodes > 0 ? 'LIVE' : 'LIVE (waiting)';
+    modeEl.className = 'live';
+    modeEl.title = realNodes > 0
+      ? `${realNodes} hardware node${realNodes > 1 ? 's' : ''} connected`
+      : 'Waiting for ESP32 hardware — click to preview with demo data';
+  }
+}
+
+// Mode toggle: click to switch LIVE ↔ DEMO
+modeEl.style.cursor = 'pointer';
+modeEl.addEventListener('click', () => {
+  const newMode = currentMode === 'demo' ? 'real' : 'simulation';
+  fetch('/api/system/mode?mode=' + newMode, { method: 'POST' })
+    .then(r => r.json())
+    .then(() => refreshMode())
+    .catch(() => {});
+});
+
+function refreshMode() {
+  fetch('/api/status').then(r => r.json()).then(data => {
+    const ps = data.pipeline_status || {};
+    const isSimulating = ps.is_simulating || false;
+    const realNodes = ps.real_nodes || 0;
+
+    if (isSimulating) {
+      updateModeUI('demo', 0);
+      startDemoData();
+    } else {
+      updateModeUI('live', realNodes);
+    }
+  }).catch(() => {});
+}
+
 bus.on('ws:connected', () => {
   statusEl.textContent = 'Connected';
   statusEl.className = 'connected';
-  // Check if server is in simulation mode → start demo data
-  fetch('/api/status').then(r => r.json()).then(data => {
-    if (data.pipeline_status && data.pipeline_status.is_simulating) {
-      modeEl.textContent = 'DEMO';
-      modeEl.className = 'demo';
-      startDemoData();
-    } else {
-      modeEl.textContent = 'LIVE';
-      modeEl.className = 'live';
-    }
-  }).catch(() => {});
+  refreshMode();
 });
 
 bus.on('ws:disconnected', () => {
   statusEl.textContent = 'Waiting for server...';
   statusEl.className = 'disconnected';
   modeEl.textContent = '';
+});
+
+// When frontend demo preview is activated (from wizard Skip), show in badge
+bus.on('mode:demo-preview', () => {
+  modeEl.textContent = 'PREVIEW';
+  modeEl.className = 'demo';
+  modeEl.title = 'Frontend demo preview — server still listening for real hardware';
 });
 
 // ── Signal Quality Bar ──────────────────────────────────────

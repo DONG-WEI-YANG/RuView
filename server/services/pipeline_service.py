@@ -96,6 +96,7 @@ class PipelineService:
         self._active_node_count: int = 0
         self._DETECTION_WINDOW_SEC = 5.0  # lock after 5s of data
         self._quality_monitor = None  # set via set_quality_monitor()
+        self._real_node_ids: set[int] = set()  # nodes seen from real UDP (not simulation)
 
         # ── Scene mode ─────────────────────────────────
         self._scene_mode: str = settings.scene_mode
@@ -162,6 +163,10 @@ class PipelineService:
         return self._active_node_count
 
     @property
+    def real_node_count(self) -> int:
+        return len(self._real_node_ids)
+
+    @property
     def strategy(self) -> str:
         return self._strategy
 
@@ -200,11 +205,13 @@ class PipelineService:
         if n > 0:
             self.settings.max_nodes = max(self.settings.max_nodes, n)
 
-    def on_frame(self, frame: CSIFrame, trigger_pipeline: bool = True) -> None:
+    def on_frame(self, frame: CSIFrame, trigger_pipeline: bool = True, simulated: bool = False) -> None:
         """Process an incoming CSI frame."""
         self._node_frames[frame.node_id] = frame
         self.csi_frames_received += 1
         self._auto_detect(frame)
+        if not simulated:
+            self._real_node_ids.add(frame.node_id)
 
         # Feed to pipeline
         if self.pipeline is not None:
@@ -548,7 +555,7 @@ class PipelineService:
                                 raw_complex=np.zeros(n_sub, dtype=np.complex64),
                             )
                             is_last = (node_idx == n_nodes - 1)
-                            self.on_frame(frame, trigger_pipeline=is_last)
+                            self.on_frame(frame, trigger_pipeline=is_last, simulated=True)
 
                         if self.pipeline and self.pipeline.model is None:
                             self.inject_joints(joints_batch[t].astype(np.float32))

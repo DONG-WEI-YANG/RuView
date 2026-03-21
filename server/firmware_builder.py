@@ -40,14 +40,14 @@ def detect_chip(port: str) -> dict:
 
     Returns {"chip": "esp32c3", "port": "COM10", "board": "esp32-c3-devkitm-1", ...}
     """
-    esptool = _find_esptool()
-    if not esptool:
+    esptool_cmd = _find_esptool()
+    if not esptool_cmd:
         return {"error": "esptool not found", "chip": None, "port": port}
 
     logger.info("Detecting chip on %s ...", port)
     try:
         result = subprocess.run(
-            [esptool, "--port", port, "chip_id"],
+            [*esptool_cmd, "--port", port, "chip_id"],
             capture_output=True, text=True, timeout=15,
         )
         output = result.stdout + result.stderr
@@ -240,8 +240,8 @@ def build_firmware(node_id: int = 1) -> dict:
 
 def flash_firmware(port: str, node_id: int = 1) -> dict:
     """Flash pre-built firmware to a device via esptool."""
-    esptool = _find_esptool()
-    if not esptool:
+    esptool_cmd = _find_esptool()
+    if not esptool_cmd:
         return {"success": False, "error": "esptool not found"}
 
     env_name = f"node{node_id}"
@@ -255,7 +255,7 @@ def flash_firmware(port: str, node_id: int = 1) -> dict:
         return {"success": False, "error": f"Firmware not built yet for {env_name}"}
 
     args = [
-        esptool, "--port", port, "--baud", "460800",
+        *esptool_cmd, "--port", port, "--baud", "460800",
         "write_flash",
         "0x0", str(bootloader),
         "0x8000", str(partitions),
@@ -328,18 +328,28 @@ def auto_build_and_flash(
     }
 
 
-def _find_esptool() -> str | None:
-    """Find esptool.py executable."""
+def _find_esptool() -> list[str] | None:
+    """Find esptool.py and return a command list to invoke it.
+
+    Returns e.g. [sys.executable, "path/to/esptool.py"] so that
+    subprocess.run() works on Windows (where .py files are not directly executable).
+    """
+    import sys
+
     # PlatformIO's bundled esptool
     pio_esptool = Path(PIO_EXE).parent.parent / "packages" / "tool-esptoolpy" / "esptool.py"
     if pio_esptool.exists():
-        return str(pio_esptool)
+        return [sys.executable, str(pio_esptool)]
 
     # Check platformio packages dir
     import glob
     for p in glob.glob(str(Path.home() / ".platformio/packages/tool-esptoolpy/esptool.py")):
-        return p
+        return [sys.executable, p]
 
-    # System esptool
+    # System esptool (might be a real .exe)
     esptool_path = shutil.which("esptool.py") or shutil.which("esptool")
-    return esptool_path
+    if esptool_path:
+        if esptool_path.endswith(".py"):
+            return [sys.executable, esptool_path]
+        return [esptool_path]
+    return None

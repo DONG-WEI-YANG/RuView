@@ -104,13 +104,32 @@ async def collect_status(container: ServiceContainer = Depends(get_container)):
 
 
 # -- OTA -------------------------------------------------------------
+def _firmware_dirs() -> list[Path]:
+    """All directories that may contain firmware binaries."""
+    base = Path(__file__).parent.parent.parent
+    return [
+        base / "dashboard" / "public" / "firmware",  # Vite build output
+        base / "dist" / "dashboard" / "firmware",     # Production build
+        base / "firmware" / "esp32-csi-node" / "build",  # Legacy path
+    ]
+
+
 @router.get("/api/ota/firmware")
 async def ota_firmware_list():
-    fw_dir = Path(__file__).parent.parent.parent / "firmware" / "esp32-csi-node" / "build"
     bins = []
-    if fw_dir.exists():
-        for f in sorted(fw_dir.glob("*.bin")):
-            bins.append({"name": f.name, "size": f.stat().st_size, "path": f"/api/ota/download/{f.name}"})
+    seen = set()
+    for fw_dir in _firmware_dirs():
+        if fw_dir.exists():
+            for f in sorted(fw_dir.glob("*.bin")):
+                if f.name not in seen:
+                    seen.add(f.name)
+                    bins.append({
+                        "name": f.name,
+                        "size": f.stat().st_size,
+                        "path": f"/api/ota/download/{f.name}",
+                        "modified": f.stat().st_mtime,
+                    })
+    bins.sort(key=lambda x: x.get("modified", 0), reverse=True)
     return {"firmware": bins, "ota_endpoint": "/api/ota/download/<filename>"}
 
 
@@ -118,10 +137,47 @@ async def ota_firmware_list():
 async def ota_download(filename: str):
     if not re.match(r'^[\w\-\.]+$', filename):
         return JSONResponse({"error": "Invalid filename"}, status_code=400)
-    fw_path = Path(__file__).parent.parent.parent / "firmware" / "esp32-csi-node" / "build" / filename
-    if not fw_path.exists():
-        return JSONResponse({"error": "Firmware not found"}, status_code=404)
-    return FileResponse(str(fw_path), media_type="application/octet-stream")
+    for fw_dir in _firmware_dirs():
+        fw_path = fw_dir / filename
+        if fw_path.exists():
+            return FileResponse(str(fw_path), media_type="application/octet-stream")
+    return JSONResponse({"error": "Firmware not found"}, status_code=404)
+
+
+@router.post("/api/ota/push")
+async def ota_push(node_id: int | None = None):
+    """Trigger OTA update for online nodes.
+
+    ESP32 OTA works by the device pulling firmware from a URL.
+    This endpoint returns the OTA download URL that nodes should fetch.
+    In a full implementation, the server would notify nodes via WebSocket
+    to trigger the pull. For now, return the URL for manual configuration.
+    """
+    bins = []
+    for fw_dir in _firmware_dirs():
+        if fw_dir.exists():
+            bins.extend(fw_dir.glob("firmware-*.bin"))
+    if not bins:
+        return JSONResponse({"error": "No firmware binaries available. Build firmware first."}, status_code=404)
+
+    # Find the newest firmware binary
+    newest = max(bins, key=lambda f: f.stat().st_mtime)
+    ota_url = f"/api/ota/download/{newest.name}"
+
+    if node_id:
+        return {
+            "message": f"OTA ready for Node {node_id}",
+            "firmware": newest.name,
+            "ota_url": ota_url,
+            "node_id": node_id,
+            "instructions": f"Configure ESP32 Node {node_id} to fetch OTA from this server's {ota_url}",
+        }
+    return {
+        "message": "OTA ready for all nodes",
+        "firmware": newest.name,
+        "ota_url": ota_url,
+        "instructions": "Configure ESP32 nodes to fetch OTA from this server",
+    }
 
 
 # -- Training ------------------------------------------------------------
