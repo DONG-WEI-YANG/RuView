@@ -32,15 +32,25 @@ class SignalProcessor:
         self,
         node_data: dict[int, np.ndarray],
         target_nodes: int | None = None,
+        node_weights: dict[int, float] | None = None,
     ) -> np.ndarray:
         """Fuse amplitude vectors from multiple nodes into fixed-width feature vector.
 
-        If target_nodes is set, pads with zeros or truncates to ensure
-        output is always (target_nodes * num_subcarriers,) regardless
-        of how many nodes actually reported this frame.
+        Args:
+            node_data: {node_id: amplitude_vector}
+            target_nodes: pad/truncate to this many nodes
+            node_weights: {node_id: 0.0-1.0} signal quality weights.
+                          Scales each node's contribution so weak nodes
+                          don't pollute the fused signal.
         """
-        arrays = [node_data[nid] for nid in sorted(node_data.keys())]
-        fused = np.concatenate(arrays).astype(np.float32)
+        sorted_ids = sorted(node_data.keys())
+        arrays = []
+        for nid in sorted_ids:
+            arr = node_data[nid].astype(np.float32)
+            if node_weights and nid in node_weights:
+                arr = arr * node_weights[nid]
+            arrays.append(arr)
+        fused = np.concatenate(arrays)
 
         if target_nodes is not None:
             n_sub = self.settings.num_subcarriers

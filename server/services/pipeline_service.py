@@ -90,6 +90,7 @@ class PipelineService:
         self._strategy_desc: str = "Waiting for nodes..."
         self._active_node_count: int = 0
         self._DETECTION_WINDOW_SEC = 5.0  # lock after 5s of data
+        self._quality_monitor = None  # set via set_quality_monitor()
 
         # ── Scene mode ─────────────────────────────────
         self._scene_mode: str = settings.scene_mode
@@ -121,6 +122,24 @@ class PipelineService:
         self.settings.scene_mode = mode
         self._apply_scene_mode()
         return {"status": "switched", "scene_mode": mode, **self._scene_config}
+
+    def get_node_weights(self) -> dict[int, float]:
+        """Get signal-quality-based weights for each node (0.0-1.0).
+
+        Used by SignalProcessor.fuse_nodes() to downweight noisy nodes.
+        Requires a SignalQualityMonitor reference (set via set_quality_monitor).
+        """
+        if self._quality_monitor is None:
+            return {}
+        quality = self._quality_monitor.get_quality()
+        weights = {}
+        grade_weights = {"excellent": 1.0, "good": 0.85, "fair": 0.5, "poor": 0.1}
+        for nq in quality.get("nodes", []):
+            weights[nq["node_id"]] = grade_weights.get(nq["grade"], 0.5)
+        return weights
+
+    def set_quality_monitor(self, monitor) -> None:
+        self._quality_monitor = monitor
 
     @property
     def detected_nodes(self) -> int:
@@ -189,6 +208,36 @@ class PipelineService:
         if trigger_pipeline:
             self._flush(frame)
 
+    def _compute_joint_confidence(self) -> list[float]:
+        """Estimate per-joint confidence from signal quality.
+
+        Joints closer to nodes with better signal get higher confidence.
+        This is a heuristic until the model outputs per-joint scores.
+
+        Joint groups and their primary sensing axis:
+          Head/neck (0-3): best from elevated nodes
+          Arms (4-9): best from side-facing nodes
+          Torso (10-11): all nodes contribute
+          Legs (12-23): best from low nodes
+        """
+        weights = self.get_node_weights()
+        if not weights:
+            return [0.5] * 24  # no quality data, assume medium
+
+        avg_w = sum(weights.values()) / len(weights) if weights else 0.5
+        # Simple: overall quality applies uniformly, slight boost for torso
+        conf = []
+        for j in range(24):
+            base = avg_w
+            if 10 <= j <= 11:  # torso — all nodes see this
+                base = min(1.0, avg_w * 1.1)
+            elif j <= 3:  # head — needs good elevated node
+                base = avg_w * 0.95
+            elif 12 <= j:  # legs — harder to sense
+                base = avg_w * 0.85
+            conf.append(round(min(1.0, max(0.0, base)), 2))
+        return conf
+
     def _flush(self, frame: CSIFrame) -> None:
         if self.pipeline is not None:
             self.pipeline.flush_frame()
@@ -196,13 +245,15 @@ class PipelineService:
                 self.latest_joints = self.pipeline.latest_joints
                 self.fall_detector = self.pipeline.fall_detector
                 self.fitness_tracker = self.pipeline.fitness_tracker
+                joint_conf = self._compute_joint_confidence()
                 try:
                     loop = asyncio.get_event_loop()
                     if loop.is_running():
                         asyncio.ensure_future(
                             self._emitter.emit("pose", {
                                 "joints": self.latest_joints.tolist(),
-                                "confidence": 0.0,
+                                "confidence": sum(joint_conf) / 24,
+                                "joint_confidence": joint_conf,
                             })
                         )
                 except RuntimeError:

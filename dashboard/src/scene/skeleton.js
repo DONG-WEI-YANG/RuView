@@ -29,17 +29,24 @@ export function createSkeleton(scene) {
   group.name = 'skeleton-overlay';
   scene.add(group);
 
-  // ── Joint spheres ──────────────────────────────────────────
-  const jointMaterial = new THREE.MeshPhongMaterial({ color: 0x00ff88 });
+  // ── Joint spheres (each gets its own material for per-joint confidence coloring) ──
   const joints = [];
   for (let i = 0; i < 24; i++) {
+    const mat = new THREE.MeshPhongMaterial({ color: 0x00ff88 });
     const sphere = new THREE.Mesh(
       new THREE.SphereGeometry(0.025, 8, 8),
-      jointMaterial,
+      mat,
     );
     sphere.visible = false;
     group.add(sphere);
     joints.push(sphere);
+  }
+
+  // Confidence → color: green (high) → yellow → red (low)
+  function confidenceColor(c) {
+    const r = c < 0.5 ? 1.0 : 1.0 - (c - 0.5) * 2;
+    const g = c > 0.5 ? 1.0 : c * 2;
+    return new THREE.Color(r, g, 0.1);
   }
 
   // ── Bone lines ─────────────────────────────────────────────
@@ -96,6 +103,13 @@ export function createSkeleton(scene) {
     if (data && data.joints) {
       if (!group.visible) group.visible = true;
       update(data.joints);
+      // Color joints by confidence if available
+      const jc = data.joint_confidence;
+      if (jc && jc.length === 24) {
+        for (let i = 0; i < 24; i++) {
+          joints[i].material.color.copy(confidenceColor(jc[i]));
+        }
+      }
     }
   }
   bus.on('pose', onPose);

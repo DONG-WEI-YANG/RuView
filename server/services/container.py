@@ -66,6 +66,7 @@ class ServiceContainer:
         self.pipeline_svc = PipelineService(
             settings=s, emitter=self.emitter, pipeline=pipeline,
         )
+        self.pipeline_svc.set_quality_monitor(self.signal_quality)
         self.storage = StorageService(db_path=s.db_path, emitter=self.emitter)
         notifier = Notifier(
             webhook_url=s.notify_webhook_url,
