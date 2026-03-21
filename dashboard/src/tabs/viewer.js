@@ -10,10 +10,6 @@
  * and hosts the HUD overlay for vital signs on the 3D view.
  */
 import { bus } from '../events.js';
-import { initScene } from '../scene/three-setup.js';
-import { createSkeleton } from '../scene/skeleton.js';
-import { createBodyMesh } from '../scene/body-mesh.js';
-import { createRoom } from '../scene/room.js';
 import * as hud from '../vitals/hud.js';
 
 let ctx = null;       // SceneContext from three-setup
@@ -325,7 +321,7 @@ export default {
   id: 'viewer',
   label: '3D Viewer',
 
-  init() {
+  async init() {
     const el = document.getElementById('tab-viewer');
     if (!el) {
       console.warn('Viewer tab: no #tab-viewer element found');
@@ -342,6 +338,14 @@ export default {
       console.warn('Viewer tab: no container element found after buildDOM');
       return;
     }
+
+    // Lazy-load Three.js modules (code-split, only loaded when viewer tab opens)
+    const [{ initScene }, { createSkeleton }, { createBodyMesh }, { createRoom }] = await Promise.all([
+      import('../scene/three-setup.js'),
+      import('../scene/skeleton.js'),
+      import('../scene/body-mesh.js'),
+      import('../scene/room.js'),
+    ]);
 
     // Initialize Three.js scene
     ctx = initScene(container);
