@@ -16,27 +16,34 @@ let ctx = null;       // SceneContext from three-setup
 let skeleton = null;
 let bodyMesh = null;
 let room = null;
-let renderMode = 'both'; // "mesh" | "skeleton" | "both"
+let renderStyle = 'mannequin'; // "mannequin" | "xray" | "wireframe" | "skeleton"
 
-function applyRenderMode() {
-  const showMesh = renderMode === 'mesh' || renderMode === 'both';
-  const showSkeleton = renderMode === 'skeleton' || renderMode === 'both';
-
-  if (bodyMesh) bodyMesh.group.visible = showMesh;
-  if (skeleton) skeleton.group.visible = showSkeleton;
+function applyRenderStyle() {
+  if (renderStyle === 'skeleton') {
+    // Skeleton only — hide mesh, show joints
+    if (bodyMesh) bodyMesh.group.visible = false;
+    if (skeleton) skeleton.group.visible = true;
+  } else {
+    // All other styles show mesh + skeleton overlay
+    if (bodyMesh) {
+      bodyMesh.group.visible = true;
+      bodyMesh.renderer.setRenderStyle(renderStyle);
+    }
+    if (skeleton) skeleton.group.visible = (renderStyle === 'xray');
+  }
 
   const btn = document.getElementById('render-mode-btn');
   if (btn) {
-    const labels = { mesh: 'Mesh', skeleton: 'Skeleton', both: 'Both' };
-    btn.textContent = labels[renderMode] || renderMode;
+    const labels = { mannequin: 'Body', xray: 'X-Ray', wireframe: 'Wire', skeleton: 'Skeleton' };
+    btn.textContent = labels[renderStyle] || renderStyle;
   }
 }
 
-function cycleRenderMode() {
-  const modes = ['mesh', 'skeleton', 'both'];
-  const idx = modes.indexOf(renderMode);
-  renderMode = modes[(idx + 1) % modes.length];
-  applyRenderMode();
+function cycleRenderStyle() {
+  const modes = ['mannequin', 'xray', 'wireframe', 'skeleton'];
+  const idx = modes.indexOf(renderStyle);
+  renderStyle = modes[(idx + 1) % modes.length];
+  applyRenderStyle();
 }
 
 /**
@@ -360,15 +367,15 @@ export default {
     skeleton = createSkeleton(ctx.scene);
 
     // Apply initial render mode
-    applyRenderMode();
+    applyRenderStyle();
 
     // Render-mode button
     const modeBtn = document.getElementById('render-mode-btn');
-    if (modeBtn) modeBtn.addEventListener('click', cycleRenderMode);
+    if (modeBtn) modeBtn.addEventListener('click', cycleRenderStyle);
 
     // Keyboard shortcut: M key
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'm' || e.key === 'M') cycleRenderMode();
+      if (e.key === 'm' || e.key === 'M') cycleRenderStyle();
     });
 
     // Initialize vital-signs HUD overlay (renders on top of 3D view)

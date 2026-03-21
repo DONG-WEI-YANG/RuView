@@ -263,28 +263,61 @@ class SMPLMeshRenderer {
   }
 
   _build() {
+    // ── Solid body material (mannequin look) ──────────────────
+    // Neutral skin-like tone, semi-transparent, smooth Phong shading
+    const solidMat = new THREE.MeshPhongMaterial({
+      color: 0xd4a574,          // warm neutral skin tone
+      specular: 0x443322,
+      shininess: 15,
+      transparent: true,
+      opacity: 0.75,
+      side: THREE.DoubleSide,
+      depthWrite: false,        // let wireframe overlay show through
+    });
+
+    // ── Wireframe overlay (subtle structural lines) ───────────
     const wireMat = new THREE.MeshBasicMaterial({
-      color: 0x00ffaa, wireframe: true, transparent: true, opacity: 0.85,
+      color: 0x00ffaa, wireframe: true, transparent: true, opacity: 0.35,
     });
+    // Glow layer (outer rim)
     const glowMat = new THREE.MeshBasicMaterial({
-      color: 0x00ff88, wireframe: true, transparent: true, opacity: 0.15,
+      color: 0x00ff88, wireframe: true, transparent: true, opacity: 0.08,
     });
+
+    // ── Render style: 'mannequin' | 'wireframe' | 'xray' ─────
+    this._renderStyle = 'mannequin';
 
     for (let ci = 0; ci < CHAINS.length; ci++) {
       const ch = CHAINS[ci];
+
+      // Solid body mesh
+      const solidGeom = buildChainGeom(ch, REST);
+      const solidMesh = new THREE.Mesh(solidGeom, solidMat.clone());
+      solidMesh.frustumCulled = false;
+      solidMesh.renderOrder = 0;
+      this.group.add(solidMesh);
+
+      // Wireframe overlay
       const geom = buildChainGeom(ch, REST);
       const mesh = new THREE.Mesh(geom, wireMat.clone());
       mesh.frustumCulled = false;
+      mesh.renderOrder = 1;
       this.group.add(mesh);
 
+      // Glow
       const glowGeom = buildChainGeom(ch, REST);
       const glowMesh = new THREE.Mesh(glowGeom, glowMat.clone());
       glowMesh.scale.set(1.03, 1.0, 1.03);
       glowMesh.frustumCulled = false;
+      glowMesh.renderOrder = 2;
       this.group.add(glowMesh);
 
       this._chainData.push({
-        def: ch, mesh, geom,
+        def: ch,
+        solidMesh, solidGeom,
+        solidPosAttr: solidGeom.getAttribute('position'),
+        solidNorAttr: solidGeom.getAttribute('normal'),
+        mesh, geom,
         posAttr: geom.getAttribute('position'),
         norAttr: geom.getAttribute('normal'),
         glowMesh, glowGeom,
@@ -293,10 +326,19 @@ class SMPLMeshRenderer {
       });
     }
 
-    // Head ellipsoid
+    // Head ellipsoid — solid + wireframe
     const headGeom = new THREE.SphereGeometry(0.098, 16, 12);
-    this.headMesh = new THREE.Mesh(headGeom, wireMat.clone());
+    this._headSolid = new THREE.Mesh(headGeom, solidMat.clone());
+    this._headSolid.scale.set(1.0, 1.18, 0.92);
+    this._headSolid.renderOrder = 0;
+    this.group.add(this._headSolid);
+
+    this.headMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.098, 16, 12),
+      wireMat.clone(),
+    );
     this.headMesh.scale.set(1.0, 1.18, 0.92);
+    this.headMesh.renderOrder = 1;
     this.group.add(this.headMesh);
 
     const headGlow = new THREE.Mesh(
@@ -304,14 +346,15 @@ class SMPLMeshRenderer {
       glowMat.clone(),
     );
     headGlow.scale.set(1.0, 1.18, 0.92);
+    headGlow.renderOrder = 2;
     this.group.add(headGlow);
     this._headGlow = headGlow;
 
-    // Joint spheres
+    // Joint spheres (solid)
     const sphGeom = new THREE.SphereGeometry(1, 8, 6);
     for (let si = 0; si < JSPHERES.length; si++) {
       const jd = JSPHERES[si];
-      const sm = new THREE.Mesh(sphGeom, wireMat.clone());
+      const sm = new THREE.Mesh(sphGeom, solidMat.clone());
       sm.scale.set(jd.r, jd.r, jd.r);
       this.group.add(sm);
       this._spheres.push({ mesh: sm, idx: jd.idx });
@@ -323,7 +366,7 @@ class SMPLMeshRenderer {
       { j: 14, r: 0.033 }, { j: 17, r: 0.033 },
     ];
     for (const cd of caps) {
-      const cm = new THREE.Mesh(sphGeom, wireMat.clone());
+      const cm = new THREE.Mesh(sphGeom, solidMat.clone());
       cm.scale.set(cd.r, cd.r * 0.7, cd.r);
       this.group.add(cm);
       this._spheres.push({ mesh: cm, idx: cd.j });
@@ -341,11 +384,21 @@ class SMPLMeshRenderer {
       const ch = cd.def;
       const jts = ch.joints.map((ji) => joints[ji]);
 
+      // Solid body
+      if (cd.solidPosAttr) {
+        fillVerts(cd.solidPosAttr.array, cd.solidNorAttr.array, ch.rings, jts, ch.jointT, ch.up);
+        cd.solidPosAttr.needsUpdate = true;
+        cd.solidNorAttr.needsUpdate = true;
+        cd.solidGeom.boundingSphere = null;
+      }
+
+      // Wireframe overlay
       fillVerts(cd.posAttr.array, cd.norAttr.array, ch.rings, jts, ch.jointT, ch.up);
       cd.posAttr.needsUpdate = true;
       cd.norAttr.needsUpdate = true;
       cd.geom.boundingSphere = null;
 
+      // Glow
       if (cd.glowPosAttr) {
         fillVerts(cd.glowPosAttr.array, cd.glowNorAttr.array, ch.rings, jts, ch.jointT, ch.up);
         cd.glowPosAttr.needsUpdate = true;
@@ -355,6 +408,7 @@ class SMPLMeshRenderer {
     }
 
     const h = joints[0];
+    if (this._headSolid) this._headSolid.position.set(h[0], h[1], h[2]);
     this.headMesh.position.set(h[0], h[1], h[2]);
     if (this._headGlow) this._headGlow.position.set(h[0], h[1], h[2]);
 
@@ -408,28 +462,71 @@ class SMPLMeshRenderer {
   }
 
   /**
-   * Color each chain's wireframe by the average confidence of its joints.
-   * Green (high) → Yellow → Red (low).
+   * Color each chain by the average confidence of its joints.
+   * Solid: skin tone modulated by confidence (brighter = higher)
+   * Wire: green→yellow→red
    * @param {number[]} jointConf - 24 confidence values (0-1)
    */
   applyConfidenceColors(jointConf) {
     for (const cd of this._chainData) {
       const chainJoints = cd.def.joints;
       const avgConf = chainJoints.reduce((s, j) => s + (jointConf[j] || 0.5), 0) / chainJoints.length;
-      // Confidence → color: green→yellow→red
-      const r = avgConf < 0.5 ? 1.0 : 1.0 - (avgConf - 0.5) * 2;
-      const g = avgConf > 0.5 ? 1.0 : avgConf * 2;
-      const color = new THREE.Color(r, g, 0.15);
-      cd.mesh.material.color.copy(color);
-      cd.glowMesh.material.color.copy(color);
+
+      // Wire overlay: green→yellow→red
+      const wr = avgConf < 0.5 ? 1.0 : 1.0 - (avgConf - 0.5) * 2;
+      const wg = avgConf > 0.5 ? 1.0 : avgConf * 2;
+      const wireColor = new THREE.Color(wr, wg, 0.15);
+      cd.mesh.material.color.copy(wireColor);
+      cd.glowMesh.material.color.copy(wireColor);
+
+      // Solid body: skin tone * confidence brightness
+      if (cd.solidMesh) {
+        const brightness = 0.5 + avgConf * 0.5; // 0.5-1.0
+        cd.solidMesh.material.color.set(
+          new THREE.Color(0.83 * brightness, 0.65 * brightness, 0.46 * brightness)
+        );
+        cd.solidMesh.material.opacity = 0.5 + avgConf * 0.35;
+      }
     }
     // Head
-    if (this.headMesh && jointConf[0] !== undefined) {
-      const hc = jointConf[0];
-      const r = hc < 0.5 ? 1.0 : 1.0 - (hc - 0.5) * 2;
-      const g = hc > 0.5 ? 1.0 : hc * 2;
-      this.headMesh.material.color.set(new THREE.Color(r, g, 0.15));
-      if (this._headGlow) this._headGlow.material.color.set(new THREE.Color(r, g, 0.15));
+    const hc = jointConf[0] !== undefined ? jointConf[0] : 0.5;
+    const wr = hc < 0.5 ? 1.0 : 1.0 - (hc - 0.5) * 2;
+    const wg = hc > 0.5 ? 1.0 : hc * 2;
+    if (this.headMesh) this.headMesh.material.color.set(new THREE.Color(wr, wg, 0.15));
+    if (this._headGlow) this._headGlow.material.color.set(new THREE.Color(wr, wg, 0.15));
+    if (this._headSolid) {
+      const b = 0.5 + hc * 0.5;
+      this._headSolid.material.color.set(new THREE.Color(0.83 * b, 0.65 * b, 0.46 * b));
+      this._headSolid.material.opacity = 0.5 + hc * 0.35;
+    }
+  }
+
+  /**
+   * Switch render style: 'mannequin' | 'wireframe' | 'xray'
+   */
+  setRenderStyle(style) {
+    this._renderStyle = style;
+    const showSolid = style === 'mannequin' || style === 'xray';
+    const showWire = style === 'wireframe' || style === 'xray';
+    const solidOpacity = style === 'xray' ? 0.3 : 0.75;
+
+    for (const cd of this._chainData) {
+      if (cd.solidMesh) {
+        cd.solidMesh.visible = showSolid;
+        cd.solidMesh.material.opacity = solidOpacity;
+      }
+      cd.mesh.visible = showWire;
+      cd.glowMesh.visible = showWire;
+    }
+    if (this._headSolid) {
+      this._headSolid.visible = showSolid;
+      this._headSolid.material.opacity = solidOpacity;
+    }
+    if (this.headMesh) this.headMesh.visible = showWire;
+    if (this._headGlow) this._headGlow.visible = showWire;
+    for (const sp of this._spheres) {
+      sp.mesh.material.wireframe = !showSolid;
+      sp.mesh.material.opacity = showSolid ? 0.9 : 0.85;
     }
   }
 
