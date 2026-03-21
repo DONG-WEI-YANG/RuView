@@ -134,3 +134,31 @@ canvas { background: #000; width: 100%; display: block; }
     #vitals-hud { top: 10px; left: 10px; right: 10px; }
     .hud-card { min-width: auto; }
 }
+
+/* ── Mobile (< 480px) ──────────────────────────────────── */
+@media (max-width: 480px) {
+  #app-header h1 { font-size: 14px; }
+  #tab-bar {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+    background: #000; border-top: 1px solid #333;
+    overflow-x: auto; padding: 0 4px;
+  }
+  #tab-bar button { font-size: 10px; padding: 8px 6px; white-space: nowrap; }
+  #tab-content { padding-bottom: 50px; }
+  main { flex-direction: column !important; }
+  #info-panel { width: 100% !important; flex-direction: row; flex-wrap: wrap; gap: 8px; }
+  #info-panel .card { flex: 1; min-width: 120px; }
+  #vitals-hud { flex-direction: column; gap: 4px; }
+  .hud-card { min-width: auto; }
+  .health-grid { grid-template-columns: 1fr !important; }
+}
+
+/* ── Tablet (480-768px) ────────────────────────────────── */
+@media (min-width: 481px) and (max-width: 768px) {
+  #tab-bar {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+    background: #000; border-top: 1px solid #333;
+  }
+  #tab-content { padding-bottom: 50px; }
+  .health-grid { grid-template-columns: repeat(2, 1fr) !important; }
+}

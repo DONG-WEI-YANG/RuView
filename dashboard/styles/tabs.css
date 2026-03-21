@@ -102,6 +102,15 @@
 }
 #skeleton-canvas { width: 100%; height: 100%; display: block; }
 
+/* ── Touch-friendly tabs on small screens ──────────────── */
+@media (max-width: 768px) {
+  #tab-bar button {
+    padding: 12px 10px;
+    font-size: 12px;
+    min-height: 44px; /* WCAG touch target */
+  }
+}
+
 /* ── Dashboard Grid ────────────────────────────────────── */
 .tab-scroll {
     overflow-y: auto;
