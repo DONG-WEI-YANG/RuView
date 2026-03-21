@@ -13,6 +13,7 @@ from server.services.pipeline_service import PipelineService
 from server.services.vitals_service import VitalsService
 from server.services.calibration_service import CalibrationService
 from server.services.storage_service import StorageService
+from server.services.signal_quality import SignalQualityMonitor
 from server.services.notification_service import NotificationService
 
 logger = logging.getLogger(__name__)
@@ -49,10 +50,12 @@ class ServiceContainer:
     calibration: CalibrationService = field(init=False)
     storage: StorageService = field(init=False)
     notification: NotificationService = field(init=False)
+    signal_quality: SignalQualityMonitor = field(init=False)
 
     def __post_init__(self):
         s = self.settings
         self.websocket = WebSocketService(emitter=self.emitter)
+        self.signal_quality = SignalQualityMonitor(emitter=self.emitter)
         pipeline = _load_pipeline(s)
         # Wire calibration + vitals into pipeline settings
         self.calibration = CalibrationService()

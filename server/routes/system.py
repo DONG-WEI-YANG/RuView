@@ -150,6 +150,12 @@ async def set_mode(mode: str, container: ServiceContainer = Depends(get_containe
     return {"status": "switched", "mode": mode}
 
 
+@router.get("/api/signal-quality")
+async def signal_quality(container: ServiceContainer = Depends(get_container)):
+    """Per-node signal quality, overall grade, and environment tips."""
+    return container.signal_quality.get_quality()
+
+
 @router.get("/api/system/scene")
 async def get_scene(container: ServiceContainer = Depends(get_container)):
     ps = container.pipeline_svc

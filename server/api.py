@@ -36,6 +36,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         receiver = CSIReceiver(settings)
 
         def on_csi(frame, trigger_pipeline=True):
+            container.signal_quality.on_frame(frame)
             if container.calibration.is_active:
                 container.calibration.on_frame(frame)
             if frame.amplitude is not None:

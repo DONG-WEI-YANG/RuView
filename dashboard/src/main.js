@@ -98,6 +98,27 @@ bus.on('ws:disconnected', () => {
   modeEl.textContent = '';
 });
 
+// ── Signal Quality Bar ──────────────────────────────────────
+const sqBar = document.getElementById('signal-quality-bar');
+if (sqBar) {
+  sqBar.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:10px;color:#888';
+  bus.on('signal_quality', (data) => {
+    if (!data || !data.nodes) return;
+    sqBar.textContent = '';
+    // Show per-node signal dots
+    data.nodes.forEach(n => {
+      const dot = document.createElement('span');
+      dot.title = `Node ${n.node_id}: ${n.rssi} dBm (${n.grade_label})`;
+      dot.style.cssText = `display:inline-block;width:8px;height:8px;border-radius:50%;background:${n.grade_color}`;
+      sqBar.appendChild(dot);
+    });
+    const label = document.createElement('span');
+    label.textContent = data.overall_label || '';
+    label.style.color = data.nodes[0] ? data.nodes[0].grade_color : '#888';
+    sqBar.appendChild(label);
+  });
+}
+
 // Don't auto-start demo data — wait for server connection to decide
 
 // ── Share / QR code for tablet connection ──────────────────
