@@ -165,7 +165,29 @@ async def set_mode(mode: str, container: ServiceContainer = Depends(get_containe
 async def wifi_config():
     """Auto-detect current WiFi SSID, password, and server IP from host PC."""
     from server.wifi_detect import detect_wifi
-    return detect_wifi()
+    result = detect_wifi()
+
+    # Check if firmware was flashed with different WiFi config
+    from server.firmware_builder import BUILD_DIR
+    defaults_path = BUILD_DIR / "sdkconfig.defaults"
+    result["firmware_match"] = True
+    result["firmware_ssid"] = ""
+    result["firmware_ip"] = ""
+    if defaults_path.exists():
+        import re
+        text = defaults_path.read_text(encoding="utf-8", errors="replace")
+        m_ssid = re.search(r'CONFIG_CSI_WIFI_SSID="(.+?)"', text)
+        m_ip = re.search(r'CONFIG_CSI_TARGET_IP="(.+?)"', text)
+        if m_ssid:
+            result["firmware_ssid"] = m_ssid.group(1)
+        if m_ip:
+            result["firmware_ip"] = m_ip.group(1)
+        if m_ssid and m_ssid.group(1) != result["ssid"]:
+            result["firmware_match"] = False
+        if m_ip and m_ip.group(1) != result["server_ip"]:
+            result["firmware_match"] = False
+
+    return result
 
 
 @router.get("/api/firmware/detect")

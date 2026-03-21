@@ -141,6 +141,49 @@ def _print_banner(port: int, simulate: bool, mdns_ok: bool) -> None:
     print()
 
 
+def _ensure_firewall(udp_port: int, api_port: int) -> None:
+    """Open firewall for UDP CSI port and TCP API port (Windows only, needs admin)."""
+    import subprocess, sys
+    if sys.platform != "win32":
+        return
+
+    log = logging.getLogger(__name__)
+    rules = [
+        ("WiFi Body CSI UDP", "UDP", udp_port),
+        ("WiFi Body API TCP", "TCP", api_port),
+    ]
+    for name, proto, port in rules:
+        # Check if rule already exists
+        try:
+            out = subprocess.check_output(
+                f'netsh advfirewall firewall show rule name="{name}"',
+                shell=True, text=True, timeout=5, stderr=subprocess.DEVNULL,
+            )
+            if "-----" in out:
+                continue  # rule exists
+        except subprocess.CalledProcessError:
+            pass  # rule doesn't exist
+
+        # Try to add rule (may fail without admin)
+        try:
+            subprocess.check_output(
+                f'netsh advfirewall firewall add rule name="{name}" dir=in action=allow protocol={proto} localport={port}',
+                shell=True, text=True, timeout=5, stderr=subprocess.DEVNULL,
+            )
+            log.info("Firewall rule added: %s %s/%d", name, proto, port)
+        except subprocess.CalledProcessError:
+            # Try via PowerShell UAC elevation
+            try:
+                subprocess.run(
+                    ["powershell", "-Command",
+                     f'Start-Process netsh -ArgumentList \'advfirewall firewall add rule name="{name}" dir=in action=allow protocol={proto} localport={port}\' -Verb RunAs -Wait'],
+                    timeout=30, capture_output=True,
+                )
+                log.info("Firewall rule added (elevated): %s %s/%d", name, proto, port)
+            except Exception as e:
+                log.warning("Could not add firewall rule %s: %s (run as admin to fix)", name, e)
+
+
 def main():
     parser = argparse.ArgumentParser(description="WiFi Body pose estimation server")
     parser.add_argument(
@@ -193,6 +236,9 @@ def main():
 
     # Ensure port is free (kill stale server if needed)
     _free_port(settings.api_port)
+
+    # Open firewall for UDP CSI + TCP API
+    _ensure_firewall(settings.udp_port, settings.api_port)
 
     app = create_app(settings)
     zc = _start_mdns(settings.api_port)

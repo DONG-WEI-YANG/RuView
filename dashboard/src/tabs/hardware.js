@@ -433,6 +433,19 @@ async function renderSetupStatus() {
     box.appendChild(row);
   });
 
+  // WiFi mismatch warning — firmware was flashed with different WiFi
+  if (wifiConfig.firmware_match === false) {
+    const warn = makeEl('div', { style: 'background:#331100;border:1px solid #f80;border-radius:4px;padding:8px;margin-top:8px;font-size:11px' });
+    warn.appendChild(makeEl('div', { textContent: 'WiFi changed since last flash!', style: 'color:#f80;font-weight:bold;margin-bottom:4px' }));
+    warn.appendChild(makeEl('div', { textContent: 'Firmware: ' + (wifiConfig.firmware_ssid || '?') + ' → ' + (wifiConfig.firmware_ip || '?'), style: 'color:#888' }));
+    warn.appendChild(makeEl('div', { textContent: 'Current:  ' + wifiConfig.ssid + ' → ' + wifiConfig.server_ip, style: 'color:#ccc' }));
+    const reflashBtn = makeEl('button', { textContent: 'Re-flash All Devices with New WiFi' });
+    reflashBtn.style.cssText = 'margin-top:8px;padding:6px 14px;background:#f80;border:none;color:#000;cursor:pointer;font-weight:bold;font-size:11px;border-radius:3px;width:100%';
+    reflashBtn.addEventListener('click', reflashAllDevices);
+    warn.appendChild(reflashBtn);
+    box.appendChild(warn);
+  }
+
   // Profile (compact)
   try {
     const profData = await fetch('/api/profiles').then(r => r.json());
@@ -729,6 +742,30 @@ function refreshAll() {
   fetchWifiConfig();
   renderPlacementMap();
   renderFirmware();
+}
+
+async function reflashAllDevices() {
+  if (detectedDevices.length === 0) {
+    alert('No USB devices detected. Plug in ESP32 boards first.');
+    return;
+  }
+
+  for (let i = 0; i < detectedDevices.length; i++) {
+    const dev = detectedDevices[i];
+    const nodeId = i + 1;
+    startWizardForDevice(dev, nodeId);
+    // Wait for wizard to finish (poll firmware status)
+    let done = false;
+    while (!done) {
+      await sleep(2000);
+      try {
+        const sr = await fetch('/api/firmware/status');
+        const s = await sr.json();
+        if (s.status !== 'building') done = true;
+      } catch { done = true; }
+    }
+    await sleep(1000);
+  }
 }
 
 // ══════════════════════════════════════════════════════════
