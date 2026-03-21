@@ -80,6 +80,7 @@ class ServiceContainer:
         self.emitter.on("pose", self._on_pose_for_ws)
         self.emitter.on("vitals", self._on_vitals_for_ws)
         self.emitter.on("csi", self._on_csi_for_ws)
+        self.emitter.on("persons", self._on_persons_for_ws)
 
     async def _on_pose_for_ws(self, data):
         from server.protocol.envelope import make_envelope, PoseData
@@ -94,6 +95,12 @@ class ServiceContainer:
     async def _on_csi_for_ws(self, data):
         from server.protocol.envelope import make_envelope, CsiData
         env = make_envelope("csi", CsiData(**data))
+        await self.websocket.broadcast_envelope(env)
+
+    async def _on_persons_for_ws(self, data):
+        from server.protocol.envelope import make_envelope, PersonsData, PersonData
+        persons = [PersonData(**p) for p in data.get("persons", [])]
+        env = make_envelope("persons", PersonsData(persons=persons, count=data.get("count", 0)))
         await self.websocket.broadcast_envelope(env)
 
     async def startup(self) -> None:

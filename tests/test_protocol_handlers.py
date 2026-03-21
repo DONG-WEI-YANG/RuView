@@ -23,7 +23,7 @@ def test_hello_sets_v1_and_subscriptions():
 def test_hello_empty_capabilities_subscribes_all():
     conn = ConnectionState()
     response = handle_client_message(conn, {"v": 1, "type": "hello", "capabilities": []})
-    assert conn.subscriptions == {"pose", "vitals", "csi", "status"}
+    assert conn.subscriptions == {"pose", "vitals", "csi", "status", "persons"}
 
 
 def test_pong_updates_last_pong():

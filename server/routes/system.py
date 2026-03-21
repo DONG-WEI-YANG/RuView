@@ -104,6 +104,16 @@ async def get_profiles(container: ServiceContainer = Depends(get_container)):
     return {"profiles": profiles, "active": active_id}
 
 
+@router.get("/api/persons")
+async def get_persons(container: ServiceContainer = Depends(get_container)):
+    """Get all currently tracked persons with their poses, vitals, and positions."""
+    ps = container.pipeline_svc
+    return {
+        "count": ps.person_count,
+        "persons": ps.get_persons_snapshot(),
+    }
+
+
 @router.get("/api/joints")
 async def get_joints(container: ServiceContainer = Depends(get_container)):
     joints = container.pipeline_svc.latest_joints

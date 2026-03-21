@@ -13,7 +13,7 @@ export class WsClient {
     this._url = url;
     this._ws = null;
     this._reconnectAttempt = 0;
-    this._capabilities = ['pose', 'vitals', 'csi', 'status'];
+    this._capabilities = ['pose', 'vitals', 'csi', 'status', 'persons'];
   }
 
   connect() {

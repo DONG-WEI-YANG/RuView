@@ -62,9 +62,24 @@ class ErrorData(BaseModel):
     message: str
 
 
+class PersonData(BaseModel):
+    id: int
+    joints: list[list[float]] = []
+    confidence: float = 0.0
+    joint_confidence: list[float] = []
+    vitals: dict = {}
+    position: list[float] = Field(default_factory=lambda: [0.0, 0.0])
+    color: str = "#00ff88"
+
+
+class PersonsData(BaseModel):
+    persons: list[PersonData] = []
+    count: int = 0
+
+
 # ── Envelope ──────────────────────────────────────────────
 
-DataType = Union[PoseData, VitalsData, CsiData, StatusData, ErrorData]
+DataType = Union[PoseData, VitalsData, CsiData, StatusData, ErrorData, PersonsData]
 
 class Envelope(BaseModel):
     v: Literal[1] = 1

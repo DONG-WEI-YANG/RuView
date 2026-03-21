@@ -8,7 +8,7 @@ v1 format (separate envelopes per stream type).
 from __future__ import annotations
 
 from server.protocol.envelope import (
-    Envelope, PoseData, VitalsData, CsiData,
+    Envelope, PoseData, VitalsData, CsiData, PersonsData,
 )
 
 
@@ -21,6 +21,9 @@ def v1_to_v0(envelope: Envelope) -> dict:
         result["vitals"] = envelope.data.model_dump()
     elif envelope.type == "csi":
         result["csi_amplitudes"] = envelope.data.amplitudes
+    elif envelope.type == "persons":
+        result["persons"] = [p.model_dump() for p in envelope.data.persons]
+        result["person_count"] = envelope.data.count
     return result
 
 
