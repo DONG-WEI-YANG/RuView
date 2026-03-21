@@ -229,19 +229,41 @@ function buildDOM(container) {
   });
   wifiPanel.appendChild(wifiGrid);
 
-  // One-click build button
-  const buildRow = makeEl('div', { style: 'margin-top:12px;display:flex;gap:8px;align-items:center' });
-  const nodeInput = makeEl('input', { id: 'build-node-ids', value: '1,2', style: 'width:60px;padding:4px;background:#111;color:#ccc;border:1px solid #333;font-size:12px' });
-  nodeInput.title = 'Node IDs to build (comma-separated)';
-  buildRow.appendChild(makeEl('span', { textContent: 'Nodes:', style: 'color:#888;font-size:12px' }));
-  buildRow.appendChild(nodeInput);
-  const buildBtn = makeEl('button', { className: 'btn btn-primary', id: 'fw-build-btn', textContent: 'Build Firmware' });
-  buildRow.appendChild(buildBtn);
-  const buildStatus = makeEl('span', { id: 'fw-build-status', style: 'color:#888;font-size:11px;margin-left:8px' });
-  buildRow.appendChild(buildStatus);
-  wifiPanel.appendChild(buildRow);
+  // ── One-Click Auto Flash Panel ────────────────────────────
+  wifiPanel.appendChild(makeEl('h3', { className: 'sub-heading', textContent: 'One-Click Flash', style: 'margin-top:16px' }));
+  wifiPanel.appendChild(makeEl('p', { className: 'help-text', textContent: 'Detect chip → auto WiFi → build → flash. Just plug in USB and click.' }));
 
-  wifiPanel.appendChild(makeEl('p', { className: 'help-text', style: 'margin-top:8px', textContent: 'Builds firmware with these WiFi credentials baked in. Then flash via Web Flasher below.' }));
+  // Detected devices list
+  const devicesDiv = makeEl('div', { id: 'auto-devices', style: 'margin:8px 0' });
+  devicesDiv.appendChild(makeEl('span', { textContent: 'Scanning USB ports...', style: 'color:#888;font-size:12px' }));
+  wifiPanel.appendChild(devicesDiv);
+
+  // Refresh + auto flash buttons
+  const autoRow = makeEl('div', { style: 'display:flex;gap:8px;align-items:center;margin-top:8px' });
+  autoRow.appendChild(makeEl('button', { className: 'btn', id: 'auto-detect-btn', textContent: 'Scan Devices' }));
+  autoRow.appendChild(makeEl('button', { className: 'btn btn-primary', id: 'auto-flash-btn', textContent: 'Auto Flash All', disabled: true }));
+  wifiPanel.appendChild(autoRow);
+
+  // Progress steps
+  const stepsDiv = makeEl('div', { id: 'auto-flash-steps', style: 'margin-top:12px;display:none' });
+  const stepNames = ['Detect Chip', 'Read WiFi', 'Configure', 'Build', 'Flash', 'Done'];
+  stepNames.forEach((name, i) => {
+    const step = makeEl('div', { style: 'display:flex;align-items:center;gap:8px;padding:4px 0' });
+    const dot = makeEl('span', { id: 'auto-step-' + i, style: 'display:inline-block;width:10px;height:10px;border-radius:50%;background:#333;flex-shrink:0' });
+    step.appendChild(dot);
+    step.appendChild(makeEl('span', { textContent: name, style: 'font-size:12px;color:#888' }));
+    stepsDiv.appendChild(step);
+  });
+  wifiPanel.appendChild(stepsDiv);
+
+  // Progress bar
+  const progWrap = makeEl('div', { id: 'auto-progress-wrap', style: 'margin-top:8px;display:none;background:#222;border-radius:2px;height:6px;overflow:hidden' });
+  const progFill = makeEl('div', { id: 'auto-progress-fill', style: 'height:100%;background:var(--accent-green,#0f0);width:0%;transition:width 0.3s' });
+  progWrap.appendChild(progFill);
+  wifiPanel.appendChild(progWrap);
+
+  // Status text
+  wifiPanel.appendChild(makeEl('div', { id: 'auto-flash-status', style: 'font-size:11px;color:#888;margin-top:4px' }));
 
   hwGrid.appendChild(wifiPanel);
   scroll.appendChild(hwGrid);
@@ -620,61 +642,172 @@ function initProfiles() {
 }
 
 function initWifiConfig() {
-  // Auto-fetch WiFi config from server
+  const statusEl = document.getElementById('auto-flash-status');
+  const stepsDiv = document.getElementById('auto-flash-steps');
+  const progWrap = document.getElementById('auto-progress-wrap');
+  const progFill = document.getElementById('auto-progress-fill');
+  const devicesDiv = document.getElementById('auto-devices');
+  const detectBtn = document.getElementById('auto-detect-btn');
+  const flashAllBtn = document.getElementById('auto-flash-btn');
+
+  let detectedDevices = [];
+
+  function setStatus(msg, color) {
+    if (statusEl) { statusEl.textContent = msg; statusEl.style.color = color || '#888'; }
+  }
+
+  function setStep(idx, state) {
+    // state: 'pending' | 'active' | 'done' | 'error'
+    const dot = document.getElementById('auto-step-' + idx);
+    if (!dot) return;
+    const colors = { pending: '#333', active: '#ffaa00', done: '#00ff00', error: '#ff4444' };
+    dot.style.background = colors[state] || '#333';
+    if (state === 'active') dot.style.boxShadow = '0 0 6px ' + colors.active;
+    else dot.style.boxShadow = 'none';
+  }
+
+  function setProgress(pct) {
+    if (progFill) progFill.style.width = pct + '%';
+  }
+
+  // Auto-fetch WiFi config
   fetch('/api/network/wifi').then(r => r.json()).then(data => {
     const ssidEl = document.getElementById('wifi-ssid');
     const passEl = document.getElementById('wifi-pass');
     const ipEl = document.getElementById('wifi-server-ip');
-    if (ssidEl) ssidEl.textContent = data.ssid || 'Not detected';
-    if (passEl) passEl.textContent = data.password ? '••••••••' : 'Not found';
+    if (ssidEl) { ssidEl.textContent = data.ssid || 'Not detected'; if (data.detected) ssidEl.style.color = 'var(--accent-green,#0f0)'; }
+    if (passEl) passEl.textContent = data.password ? '\u2022\u2022\u2022\u2022\u2022\u2022' : 'Not found';
     if (ipEl) ipEl.textContent = data.server_ip || 'Unknown';
-    if (ssidEl && data.detected) ssidEl.style.color = 'var(--accent-green, #0f0)';
   }).catch(() => {});
 
-  // Build button
-  const buildBtn = document.getElementById('fw-build-btn');
-  const buildStatus = document.getElementById('fw-build-status');
-  if (!buildBtn) return;
-
-  buildBtn.addEventListener('click', () => {
-    const nodeIds = (document.getElementById('build-node-ids') || {}).value || '1,2';
-    buildBtn.disabled = true;
-    buildStatus.textContent = 'Building...';
-    buildStatus.style.color = '#ffaa00';
-
-    fetch('/api/firmware/build?node_ids=' + encodeURIComponent(nodeIds), { method: 'POST' })
-      .then(r => r.json())
-      .then(data => {
-        if (data.error) {
-          buildStatus.textContent = data.error;
-          buildStatus.style.color = '#ff4444';
-          buildBtn.disabled = false;
-          return;
+  // Scan devices
+  function scanDevices() {
+    if (devicesDiv) devicesDiv.textContent = '';
+    setStatus('Scanning USB ports...');
+    fetch('/api/firmware/detect').then(r => r.json()).then(data => {
+      detectedDevices = data.devices || [];
+      if (devicesDiv) devicesDiv.textContent = '';
+      if (detectedDevices.length === 0) {
+        devicesDiv.appendChild(makeEl('div', { textContent: 'No ESP32 devices found. Plug in USB cable.', style: 'color:#ff8800;font-size:12px' }));
+        if (flashAllBtn) flashAllBtn.disabled = true;
+        setStatus('No devices detected');
+        return;
+      }
+      detectedDevices.forEach((dev, i) => {
+        const row = makeEl('div', { style: 'display:flex;align-items:center;gap:8px;padding:4px 0' });
+        const dot = makeEl('span', { style: 'width:8px;height:8px;border-radius:50%;background:' + (dev.detected ? '#00ff00' : '#ff4444') });
+        row.appendChild(dot);
+        const label = dev.detected
+          ? dev.name + ' on ' + dev.port
+          : (dev.error || 'Unknown') + ' on ' + dev.port;
+        row.appendChild(makeEl('span', { textContent: label, style: 'font-size:12px;color:#ccc' }));
+        // Node ID selector
+        const nsel = document.createElement('select');
+        nsel.style.cssText = 'padding:2px 4px;background:#111;color:#ccc;border:1px solid #333;font-size:11px;margin-left:auto';
+        for (let n = 1; n <= 8; n++) {
+          const opt = document.createElement('option');
+          opt.value = n; opt.textContent = 'Node ' + n;
+          if (n === i + 1) opt.selected = true;
+          nsel.appendChild(opt);
         }
-        buildStatus.textContent = 'Building firmware for nodes ' + nodeIds + '...';
-        // Poll for completion
-        const poll = setInterval(() => {
-          fetch('/api/firmware/status').then(r => r.json()).then(s => {
-            if (s.status === 'building') return;
-            clearInterval(poll);
-            buildBtn.disabled = false;
-            if (s.status === 'complete') {
-              buildStatus.textContent = 'Build complete! Ready to flash.';
-              buildStatus.style.color = 'var(--accent-green, #0f0)';
-            } else {
-              buildStatus.textContent = 'Build failed: ' + (s.error || 'unknown');
-              buildStatus.style.color = '#ff4444';
-            }
-          });
-        }, 3000);
-      })
-      .catch(err => {
-        buildStatus.textContent = 'Error: ' + err.message;
-        buildStatus.style.color = '#ff4444';
-        buildBtn.disabled = false;
+        nsel.id = 'auto-node-sel-' + i;
+        row.appendChild(nsel);
+        devicesDiv.appendChild(row);
       });
+      if (flashAllBtn) flashAllBtn.disabled = false;
+      setStatus(detectedDevices.length + ' device(s) found', '#00ff00');
+    }).catch(err => {
+      setStatus('Scan failed: ' + err.message, '#ff4444');
+    });
+  }
+
+  if (detectBtn) detectBtn.addEventListener('click', scanDevices);
+  scanDevices(); // auto-scan on init
+
+  // Auto Flash All
+  if (flashAllBtn) flashAllBtn.addEventListener('click', async () => {
+    const devices = detectedDevices.filter(d => d.detected);
+    if (devices.length === 0) { setStatus('No flashable devices', '#ff4444'); return; }
+
+    flashAllBtn.disabled = true;
+    if (detectBtn) detectBtn.disabled = true;
+    if (stepsDiv) stepsDiv.style.display = 'block';
+    if (progWrap) progWrap.style.display = 'block';
+
+    for (let di = 0; di < devices.length; di++) {
+      const dev = devices[di];
+      const nsel = document.getElementById('auto-node-sel-' + detectedDevices.indexOf(dev));
+      const nodeId = nsel ? parseInt(nsel.value) : di + 1;
+
+      setStatus('Flashing ' + dev.name + ' on ' + dev.port + ' as Node ' + nodeId + ' (' + (di + 1) + '/' + devices.length + ')');
+
+      // Reset steps
+      for (let s = 0; s < 6; s++) setStep(s, 'pending');
+
+      // Step 0: Detect
+      setStep(0, 'active'); setProgress(5);
+      await sleep(300);
+      setStep(0, 'done');
+
+      // Step 1: WiFi
+      setStep(1, 'active'); setProgress(10);
+      await sleep(300);
+      setStep(1, 'done');
+
+      // Step 2: Configure
+      setStep(2, 'active'); setProgress(15);
+
+      // Step 3: Build + Flash (trigger server)
+      setStep(3, 'active'); setProgress(20);
+      try {
+        const resp = await fetch('/api/firmware/auto?port=' + encodeURIComponent(dev.port) + '&node_id=' + nodeId, { method: 'POST' });
+        const startData = await resp.json();
+        if (startData.error) {
+          setStep(3, 'error');
+          setStatus('Error: ' + startData.error, '#ff4444');
+          continue;
+        }
+
+        setStep(2, 'done');
+
+        // Poll for completion
+        let done = false;
+        while (!done) {
+          await sleep(3000);
+          const statusResp = await fetch('/api/firmware/status');
+          const s = await statusResp.json();
+          if (s.status === 'building') {
+            setProgress(20 + (di / devices.length) * 60);
+          } else {
+            done = true;
+            if (s.status === 'complete' && s.success) {
+              setStep(3, 'done');
+              setStep(4, 'done');
+              setStep(5, 'done');
+              setProgress(100);
+              setStatus(dev.name + ' Node ' + nodeId + ' flashed!', '#00ff00');
+            } else {
+              setStep(3, 'error');
+              setStatus('Failed: ' + (s.error || s.step || 'unknown'), '#ff4444');
+            }
+          }
+        }
+      } catch (err) {
+        setStep(3, 'error');
+        setStatus('Error: ' + err.message, '#ff4444');
+      }
+
+      // Small delay between devices
+      if (di < devices.length - 1) await sleep(1000);
+    }
+
+    flashAllBtn.disabled = false;
+    if (detectBtn) detectBtn.disabled = false;
+    setStatus('All devices processed!', '#00ff00');
   });
 }
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 function initFlasher() {
   const connectBtn = document.getElementById('flash-connect-btn');
