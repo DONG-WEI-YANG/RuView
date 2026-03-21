@@ -16,7 +16,7 @@ let ctx = null;       // SceneContext from three-setup
 let skeleton = null;
 let bodyMesh = null;
 let room = null;
-let renderMode = 'mesh'; // "mesh" | "skeleton" | "both"
+let renderMode = 'both'; // "mesh" | "skeleton" | "both"
 
 function applyRenderMode() {
   const showMesh = renderMode === 'mesh' || renderMode === 'both';

@@ -407,6 +407,32 @@ class SMPLMeshRenderer {
     }
   }
 
+  /**
+   * Color each chain's wireframe by the average confidence of its joints.
+   * Green (high) → Yellow → Red (low).
+   * @param {number[]} jointConf - 24 confidence values (0-1)
+   */
+  applyConfidenceColors(jointConf) {
+    for (const cd of this._chainData) {
+      const chainJoints = cd.def.joints;
+      const avgConf = chainJoints.reduce((s, j) => s + (jointConf[j] || 0.5), 0) / chainJoints.length;
+      // Confidence → color: green→yellow→red
+      const r = avgConf < 0.5 ? 1.0 : 1.0 - (avgConf - 0.5) * 2;
+      const g = avgConf > 0.5 ? 1.0 : avgConf * 2;
+      const color = new THREE.Color(r, g, 0.15);
+      cd.mesh.material.color.copy(color);
+      cd.glowMesh.material.color.copy(color);
+    }
+    // Head
+    if (this.headMesh && jointConf[0] !== undefined) {
+      const hc = jointConf[0];
+      const r = hc < 0.5 ? 1.0 : 1.0 - (hc - 0.5) * 2;
+      const g = hc > 0.5 ? 1.0 : hc * 2;
+      this.headMesh.material.color.set(new THREE.Color(r, g, 0.15));
+      if (this._headGlow) this._headGlow.material.color.set(new THREE.Color(r, g, 0.15));
+    }
+  }
+
   dispose() {
     this.stopDemo();
     this.group.traverse((child) => {
@@ -445,6 +471,12 @@ export function createBodyMesh(scene) {
       demoActive = false;
     }
     meshRenderer.update(data.joints);
+
+    // Color each body chain by its average joint confidence
+    const jc = data.joint_confidence;
+    if (jc && jc.length === 24) {
+      meshRenderer.applyConfidenceColors(jc);
+    }
   }
   bus.on('pose', onPose);
 
