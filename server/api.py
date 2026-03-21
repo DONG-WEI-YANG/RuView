@@ -77,9 +77,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(data.router)
     app.include_router(ws.router)
 
-    # Static files
+    # Static files — prefer Vite build output, fall back to source
+    dist_dir = Path(__file__).parent.parent / "dist" / "dashboard"
     dashboard_dir = Path(__file__).parent.parent / "dashboard"
-    if dashboard_dir.exists():
-        app.mount("/dashboard", StaticFiles(directory=str(dashboard_dir)), name="dashboard")
+    static_dir = dist_dir if dist_dir.exists() else dashboard_dir
+    if static_dir.exists():
+        app.mount("/dashboard", StaticFiles(directory=str(static_dir)), name="dashboard")
 
     return app
