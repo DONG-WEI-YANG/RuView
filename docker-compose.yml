@@ -1,12 +1,13 @@
+version: "3.8"
 services:
   wifi-body:
     build: .
     ports:
-      - "8000:8000"      # Dashboard + API
-      - "5005:5005/udp"  # CSI receiver
+      - "8000:8000"
+      - "5005:5005/udp"
     volumes:
-      - ./models:/app/models
       - ./data:/app/data
+      - ./models:/app/models
     environment:
-      - HARDWARE_PROFILE=esp32s3
-    restart: unless-stopped
+      - SIMULATE=true
+    command: python -m server --simulate

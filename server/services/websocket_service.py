@@ -1,4 +1,10 @@
-"""WebSocket connection management, v0/v1 dispatch, and heartbeat."""
+"""WebSocket connection management, v0/v1 dispatch, and heartbeat.
+
+All outbound server → client broadcasts MUST go through
+``WebSocketService.broadcast_envelope()``.  Direct ``send_text`` calls
+outside of this class are not permitted for broadcast traffic; they are only
+used here internally and in ws.py for point-to-point client message responses.
+"""
 from __future__ import annotations
 
 import asyncio

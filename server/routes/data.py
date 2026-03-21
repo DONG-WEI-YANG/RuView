@@ -1,4 +1,4 @@
-"""Data routes: history, collection, OTA, notifications."""
+"""Data routes: history, collection, OTA, notifications, training, models."""
 from __future__ import annotations
 
 import re
@@ -122,3 +122,59 @@ async def ota_download(filename: str):
     if not fw_path.exists():
         return JSONResponse({"error": "Firmware not found"}, status_code=404)
     return FileResponse(str(fw_path), media_type="application/octet-stream")
+
+
+# -- Training ------------------------------------------------------------
+@router.post("/api/train/start")
+async def train_start(epochs: int = 50, container: ServiceContainer = Depends(get_container)):
+    """Start model training in background."""
+    import subprocess, sys, threading
+    if getattr(container, '_train_process', None) and container._train_process.poll() is None:
+        return JSONResponse({"error": "Training already in progress"}, status_code=409)
+
+    data_dir = "data/real" if Path("data/real").exists() else "data/synthetic"
+    cmd = [sys.executable, "-m", "server.train",
+           "--data-dir", data_dir, "--epochs", str(epochs),
+           "--profile", container.settings.hardware_profile]
+    container._train_process = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    container._train_log = []
+
+    def reader():
+        for line in container._train_process.stdout:
+            container._train_log.append(line.strip())
+            if len(container._train_log) > 200:
+                container._train_log.pop(0)
+    threading.Thread(target=reader, daemon=True).start()
+
+    return {"status": "started", "data_dir": data_dir, "epochs": epochs}
+
+
+@router.get("/api/train/status")
+async def train_status(container: ServiceContainer = Depends(get_container)):
+    """Return current training status and recent log lines."""
+    proc = getattr(container, '_train_process', None)
+    log = getattr(container, '_train_log', [])
+    if proc is None:
+        return {"status": "idle", "log": []}
+    if proc.poll() is None:
+        return {"status": "running", "log": log[-20:]}
+    return {"status": "complete" if proc.returncode == 0 else "failed",
+            "returncode": proc.returncode, "log": log[-20:]}
+
+
+# -- Model versioning ----------------------------------------------------
+@router.get("/api/models")
+async def list_models(container: ServiceContainer = Depends(get_container)):
+    """List available model weight files."""
+    models_dir = Path("models")
+    result = []
+    if models_dir.exists():
+        for p in sorted(models_dir.rglob("*.pth")):
+            active = str(p) == container.settings.model_path
+            result.append({
+                "path": str(p), "name": p.stem, "profile": p.parent.name,
+                "size_mb": round(p.stat().st_size / 1048576, 1),
+                "active": active,
+            })
+    return {"models": result, "active": container.settings.model_path}
