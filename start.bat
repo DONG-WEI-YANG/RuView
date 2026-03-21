@@ -2,6 +2,14 @@
 title WiFi Body - Server + Dashboard
 cd /d "%~dp0"
 
+:: Ensure firewall rules (elevate once if needed, non-blocking)
+netsh advfirewall firewall show rule name="WiFi Body CSI UDP" >nul 2>&1
+if %errorlevel% neq 0 (
+    echo Opening firewall for UDP 5005...
+    powershell -Command "Start-Process '%~dp0setup-firewall.bat' -Verb RunAs" 2>nul
+    timeout /t 3 /nobreak >nul
+)
+
 :: Activate virtual environment
 if exist .venv\Scripts\activate.bat call .venv\Scripts\activate.bat
 
