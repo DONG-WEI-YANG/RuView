@@ -826,12 +826,12 @@ export default {
 
   activate() {
     const el = document.getElementById('tab-hardware');
-    if (el) el.style.display = 'block';
+    // display controlled by .active CSS class
     refreshAll();
   },
 
   deactivate() {
     const el = document.getElementById('tab-hardware');
-    if (el) el.style.display = 'none';
+    // display controlled by .active CSS class
   },
 };

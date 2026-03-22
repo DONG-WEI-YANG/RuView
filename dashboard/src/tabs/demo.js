@@ -371,14 +371,10 @@ export default {
   },
 
   activate() {
-    const el = document.getElementById('tab-demo');
-    if (el) el.style.display = 'block';
     startLoop();
   },
 
   deactivate() {
-    const el = document.getElementById('tab-demo');
-    if (el) el.style.display = 'none';
     stopLoop();
   },
 

@@ -132,13 +132,7 @@ export default {
     console.log('Architecture tab initialized');
   },
 
-  activate() {
-    const el = document.getElementById('tab-architecture');
-    if (el) el.style.display = 'block';
-  },
+  activate() {},
 
-  deactivate() {
-    const el = document.getElementById('tab-architecture');
-    if (el) el.style.display = 'none';
-  },
+  deactivate() {},
 };

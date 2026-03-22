@@ -96,13 +96,7 @@ export default {
     console.log('Performance tab initialized');
   },
 
-  activate() {
-    const el = document.getElementById('tab-performance');
-    if (el) el.style.display = 'block';
-  },
+  activate() {},
 
-  deactivate() {
-    const el = document.getElementById('tab-performance');
-    if (el) el.style.display = 'none';
-  },
+  deactivate() {},
 };

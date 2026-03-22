@@ -125,16 +125,10 @@ export default {
   },
 
   activate() {
-    const el = document.getElementById('tab-sensing');
-    if (el) el.style.display = 'block';
-    // Trigger resize so canvas recalculates dimensions
     window.dispatchEvent(new Event('resize'));
   },
 
-  deactivate() {
-    const el = document.getElementById('tab-sensing');
-    if (el) el.style.display = 'none';
-  },
+  deactivate() {},
 
   dispose() {
     if (initialized) {

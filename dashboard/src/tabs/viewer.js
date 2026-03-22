@@ -574,7 +574,7 @@ export default {
 
   activate() {
     const el = document.getElementById('tab-viewer');
-    if (el) el.style.display = 'block';
+    // display controlled by .active CSS class
     // Trigger a resize so the renderer picks up the correct dimensions
     // after the tab becomes visible.
     if (ctx && ctx.renderer) {
@@ -584,7 +584,7 @@ export default {
 
   deactivate() {
     const el = document.getElementById('tab-viewer');
-    if (el) el.style.display = 'none';
+    // display controlled by .active CSS class
   },
 
   dispose() {
