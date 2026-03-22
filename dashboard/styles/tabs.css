@@ -1,5 +1,5 @@
 /*
-   tabs.css — Tab bar navigation styles, tab-content container, tab panels
+   tabs.css — Tab bar, tab panels, scrollable content
 */
 
 /* ── Tab Navigation ────────────────────────────────────── */
@@ -38,21 +38,24 @@
     flex: 1;
     position: relative;
     overflow: hidden;
-    min-height: 0;
 }
 
-/* Tab panels: absolute fill, scrollable when active */
+/*
+ * Tab panels fill the remaining viewport height.
+ * header ~50px + tab-bar ~44px ≈ 94px; use 100vh - 94px as max.
+ */
 .tab-panel {
     display: none;
-    position: absolute;
-    inset: 0;
+    width: 100%;
+    max-height: calc(100vh - 94px);
     overflow-y: auto;
+    overflow-x: hidden;
 }
 .tab-panel.active {
     display: block;
 }
 
-/* Viewer tab: flex layout for 3D canvas, no scroll */
+/* Viewer tab: flex layout, fills space, no scroll */
 #tab-viewer.active {
     display: flex;
     flex-direction: column;
@@ -80,11 +83,11 @@
     font-size: 12px;
     min-height: 44px;
   }
+  .tab-panel { max-height: calc(100vh - 104px); }
 }
 
-/* ── Scrollable tab content (Dashboard, Hardware, etc.) ── */
+/* ── Scrollable tab content container ────────────────── */
 .tab-scroll {
-    overflow-y: auto;
     width: 100%;
     padding: 24px;
 }
