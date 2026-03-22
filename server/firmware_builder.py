@@ -172,6 +172,7 @@ def update_sdkconfig(
         f'CONFIG_CSI_TARGET_IP="{server_ip}"',
         f'CONFIG_CSI_TARGET_PORT={udp_port}',
         f'CONFIG_CSI_NODE_ID={node_id}',
+        'CONFIG_ESP_WIFI_CSI_ENABLED=y',
     ])
 
     defaults.write_text("\n".join(lines) + "\n", encoding="utf-8")
