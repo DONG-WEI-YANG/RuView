@@ -147,8 +147,9 @@ function renderDeviceCards() {
       container.appendChild(card);
     });
 
-    // Show nodes that are online but not in USB list (connected via WiFi only)
-    Object.keys(nodes).forEach(nid => {
+    // Show nodes that are online via WiFi (only if real, not simulated)
+    const realNodeCount = ps.real_nodes || 0;
+    if (realNodeCount > 0) Object.keys(nodes).forEach(nid => {
       const alreadyShown = detectedDevices.some((d, i) => String(d._nodeId || i + 1) === nid);
       if (!alreadyShown) {
         const nodeInfo = nodes[nid];
