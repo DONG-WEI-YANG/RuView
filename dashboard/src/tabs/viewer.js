@@ -429,20 +429,23 @@ export default {
       advice.style.whiteSpace = 'pre-line';
     }
 
-    // Poll server for detected nodes (only count REAL hardware nodes)
+    // Poll server for detected nodes (count REAL hardware nodes or CSI frames)
     let pollCount = 0;
     function pollNodes() {
       pollCount++;
       fetch('/api/status').then(r => r.json()).then(data => {
         const ps = data.pipeline_status || {};
         const realNodes = ps.real_nodes || 0;
+        const csiFrames = ps.csi_frames_received || 0;
         const isSimulating = ps.is_simulating || false;
-        detectedNodes = realNodes;
+        // Consider hardware present if real nodes > 0 OR CSI frames coming in (non-simulation)
+        const hwPresent = realNodes > 0 || (csiFrames > 0 && !isSimulating);
+        detectedNodes = hwPresent ? Math.max(realNodes, Object.keys(data.nodes || {}).length) : 0;
 
         const countEl = document.getElementById('wizard-node-count');
         if (countEl) {
-          if (realNodes > 0) {
-            countEl.textContent = 'Detected: ' + realNodes + ' hardware node' + (realNodes !== 1 ? 's' : '');
+          if (hwPresent) {
+            countEl.textContent = 'Detected: ' + detectedNodes + ' hardware node' + (detectedNodes !== 1 ? 's' : '') + ' (' + csiFrames + ' CSI frames)';
             countEl.style.color = 'var(--accent-green,#0f0)';
           } else if (isSimulating) {
             countEl.textContent = 'Running in demo mode (no hardware detected)';
@@ -453,15 +456,15 @@ export default {
           }
         }
 
-        // Show troubleshooting after 3 polls (~6s) with 0 real nodes
+        // Show troubleshooting after 3 polls (~6s) with 0 hardware
         const troubleEl = document.getElementById('wizard-troubleshoot');
         if (troubleEl) {
-          troubleEl.style.display = (realNodes === 0 && pollCount >= 3) ? 'block' : 'none';
+          troubleEl.style.display = (!hwPresent && !isSimulating && pollCount >= 3) ? 'block' : 'none';
         }
 
-        // Auto-advance to step 1 only when REAL nodes detected
-        if (realNodes > 0 && wizardStep === 0) {
-          updatePlacementAdvice(realNodes);
+        // Auto-advance to step 1 when hardware detected
+        if (hwPresent && wizardStep === 0) {
+          updatePlacementAdvice(detectedNodes);
           showWizardStep(1);
         }
         // Update summary

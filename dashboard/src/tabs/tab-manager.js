@@ -29,16 +29,9 @@ export function switchTab(tabId) {
     initialized.add(tabId);
   }
 
-  // Activate new tab with fade-in
+  // Activate new tab
   const newPanel = document.getElementById('tab-' + tabId);
-  if (newPanel) {
-    newPanel.style.opacity = '0';
-    newPanel.classList.add('active');
-    // Trigger reflow then fade in
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => { newPanel.style.opacity = '1'; });
-    });
-  }
+  if (newPanel) newPanel.classList.add('active');
 
   tabs[tabId].activate();
   activeTabId = tabId;
