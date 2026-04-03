@@ -12,7 +12,7 @@
     --text-primary: #ffb000; /* Amber */
     --text-secondary: #cc8800;
     --accent-red: #e63946;   /* Traditional Red */
-    --accent-green: #2a9d8f; /* Jade/Phosphor Green */
+    --accent-green: #33b8a4; /* Jade/Phosphor Green (brightened for WCAG AA) */
     --border-color: #553300;
     --scanline-color: rgba(18, 16, 16, 0.5);
 }

@@ -41,6 +41,13 @@ class FitnessTracker:
         else:
             x_movement = 0.0
         if total_height < 0.5:
+            # Short stature: use torso_ratio to distinguish upright (wheelchair/
+            # child) from genuinely seated.  An upright torso (>0.45) with lateral
+            # movement is walking; upright and still is standing.
+            if torso_ratio > 0.45:
+                if x_movement > 0.1:
+                    return ActivityType.WALKING
+                return ActivityType.STANDING
             return ActivityType.SITTING
         if lower_body_ratio < 0.35:
             return ActivityType.SITTING

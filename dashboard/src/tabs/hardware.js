@@ -48,6 +48,9 @@ function buildDOM(container) {
   while (container.firstChild) container.removeChild(container.firstChild);
   const scroll = makeEl('div', { className: 'tab-scroll' });
 
+  // ── SECTION 0: QUICK SETUP ───────────────────────────────
+  scroll.appendChild(buildQuickSetup());
+
   // ── SECTION 1: DEVICES ──────────────────────────────────
   const devSection = makeEl('div', { className: 'panel', id: 'hw-devices-panel' });
   const devHeader = makeEl('div', { className: 'hw-section-header' });
@@ -770,6 +773,153 @@ async function reflashAllDevices() {
 }
 
 // ══════════════════════════════════════════════════════════
+// QUICK SETUP PANEL
+// ══════════════════════════════════════════════════════════
+function buildQuickSetup() {
+  const panel = makeEl('div', { className: 'panel', id: 'hw-quick-setup' });
+
+  // Collapsible header
+  const header = makeEl('div', { className: 'hw-section-header', style: 'cursor:pointer' });
+  const title = makeEl('h2', { textContent: 'Quick Setup' });
+  const toggle = makeEl('span', { id: 'qs-toggle', textContent: '\u25B6', style: 'color:#888;font-size:12px;transition:transform 0.2s' });
+  header.appendChild(title);
+  header.appendChild(toggle);
+  panel.appendChild(header);
+
+  const body = makeEl('div', { id: 'qs-body', style: 'display:none' });
+
+  // ── Room ────────────────────────────────────────────────
+  body.appendChild(makeEl('div', { textContent: '\uD83C\uDFE0 Room Dimensions', style: 'color:#f80;font-size:13px;font-weight:700;margin:12px 0 6px' }));
+  const roomGrid = makeEl('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px' });
+  roomGrid.appendChild(qsField('qs-room-w', 'Width (m)', 4.0));
+  roomGrid.appendChild(qsField('qs-room-d', 'Depth (m)', 4.0));
+  roomGrid.appendChild(qsField('qs-room-h', 'Height (m)', 2.8));
+  body.appendChild(roomGrid);
+
+  // ── Scene Mode ──────────────────────────────────────────
+  body.appendChild(makeEl('div', { textContent: '\uD83D\uDEE1\uFE0F Scene Mode', style: 'color:#f80;font-size:13px;font-weight:700;margin:16px 0 6px' }));
+  const modeRow = makeEl('div', { style: 'display:flex;gap:8px' });
+  const btnSafety = makeEl('button', { id: 'qs-mode-safety', textContent: 'Safety (Elderly)', className: 'qs-mode-btn active' });
+  const btnFitness = makeEl('button', { id: 'qs-mode-fitness', textContent: 'Fitness (Rehab)', className: 'qs-mode-btn' });
+  btnSafety.addEventListener('click', () => { btnSafety.classList.add('active'); btnFitness.classList.remove('active'); });
+  btnFitness.addEventListener('click', () => { btnFitness.classList.add('active'); btnSafety.classList.remove('active'); });
+  modeRow.appendChild(btnSafety);
+  modeRow.appendChild(btnFitness);
+  body.appendChild(modeRow);
+
+  // ── Notifications ───────────────────────────────────────
+  body.appendChild(makeEl('div', { textContent: '\uD83D\uDCF1 Notifications (optional)', style: 'color:#f80;font-size:13px;font-weight:700;margin:16px 0 6px' }));
+  body.appendChild(qsTextInput('qs-webhook', 'Webhook URL', ''));
+  body.appendChild(qsTextInput('qs-line', 'LINE Notify Token', ''));
+  const tgRow = makeEl('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:8px' });
+  tgRow.appendChild(qsTextInput('qs-tg-token', 'Telegram Bot Token', ''));
+  tgRow.appendChild(qsTextInput('qs-tg-chat', 'Telegram Chat ID', ''));
+  body.appendChild(tgRow);
+
+  // ── Save Button ─────────────────────────────────────────
+  const saveRow = makeEl('div', { style: 'margin-top:16px;display:flex;gap:12px;align-items:center' });
+  const saveBtn = makeEl('button', { textContent: 'Save & Apply', className: 'action-btn' });
+  saveBtn.style.cssText += ';background:#f80;color:#000;font-weight:700;border-color:#f80;padding:10px 24px';
+  const saveMsg = makeEl('span', { id: 'qs-save-msg', style: 'font-size:12px;transition:opacity 0.5s' });
+  saveBtn.addEventListener('click', saveQuickSetup);
+  saveRow.appendChild(saveBtn);
+  saveRow.appendChild(saveMsg);
+  body.appendChild(saveRow);
+
+  panel.appendChild(body);
+
+  // Toggle collapse
+  header.addEventListener('click', () => {
+    const b = document.getElementById('qs-body');
+    const t = document.getElementById('qs-toggle');
+    if (b.style.display === 'none') {
+      b.style.display = 'block';
+      t.textContent = '\u25BC';
+      loadQuickSetup();
+    } else {
+      b.style.display = 'none';
+      t.textContent = '\u25B6';
+    }
+  });
+
+  return panel;
+}
+
+function qsField(id, label, defaultVal) {
+  const wrap = makeEl('div');
+  wrap.appendChild(makeEl('label', { textContent: label, style: 'display:block;font-size:10px;color:#888;margin-bottom:2px' }));
+  const inp = makeEl('input', { id, type: 'number', value: String(defaultVal) });
+  inp.style.cssText = 'width:100%;background:#000;border:1px solid #333;color:var(--text-primary);padding:6px;font-family:inherit;font-size:14px';
+  inp.step = '0.1';
+  wrap.appendChild(inp);
+  return wrap;
+}
+
+function qsTextInput(id, placeholder, defaultVal) {
+  const inp = makeEl('input', { id, type: 'text', placeholder, value: defaultVal });
+  inp.style.cssText = 'width:100%;background:#000;border:1px solid #333;color:var(--text-primary);padding:6px;font-family:inherit;font-size:12px;margin-bottom:6px;box-sizing:border-box';
+  return inp;
+}
+
+async function loadQuickSetup() {
+  try {
+    const r = await fetch('/api/settings/quick');
+    const d = await r.json();
+    const set = (id, val) => { const el = document.getElementById(id); if (el && val != null) el.value = val; };
+    set('qs-room-w', d.room_width);
+    set('qs-room-d', d.room_depth);
+    set('qs-room-h', d.room_height);
+    set('qs-webhook', d.notify_webhook_url);
+    set('qs-line', d.notify_line_token);
+    set('qs-tg-token', d.notify_telegram_bot_token);
+    set('qs-tg-chat', d.notify_telegram_chat_id);
+    // Scene mode buttons
+    const s = document.getElementById('qs-mode-safety');
+    const f = document.getElementById('qs-mode-fitness');
+    if (s && f) {
+      if (d.scene_mode === 'fitness') { f.classList.add('active'); s.classList.remove('active'); }
+      else { s.classList.add('active'); f.classList.remove('active'); }
+    }
+  } catch {}
+}
+
+async function saveQuickSetup() {
+  const val = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
+  const sceneMode = document.getElementById('qs-mode-fitness')?.classList.contains('active') ? 'fitness' : 'safety';
+
+  const payload = {
+    room_width: parseFloat(val('qs-room-w')) || null,
+    room_depth: parseFloat(val('qs-room-d')) || null,
+    room_height: parseFloat(val('qs-room-h')) || null,
+    scene_mode: sceneMode,
+    notify_webhook_url: val('qs-webhook') || null,
+    notify_line_token: val('qs-line') || null,
+    notify_telegram_bot_token: val('qs-tg-token') || null,
+    notify_telegram_chat_id: val('qs-tg-chat') || null,
+  };
+
+  const msg = document.getElementById('qs-save-msg');
+  try {
+    const r = await fetch('/api/settings/quick', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const d = await r.json();
+    if (msg) {
+      const n = Object.keys(d.applied || {}).length;
+      msg.textContent = '\u2714 Saved ' + n + ' setting' + (n !== 1 ? 's' : '');
+      msg.style.color = '#0f0';
+      msg.style.opacity = '1';
+      setTimeout(() => { msg.style.opacity = '0'; }, 3000);
+    }
+    renderSetupStatus();
+  } catch (err) {
+    if (msg) { msg.textContent = 'Error: ' + err.message; msg.style.color = '#f44'; msg.style.opacity = '1'; }
+  }
+}
+
+// ══════════════════════════════════════════════════════════
 // CSS (injected once)
 // ══════════════════════════════════════════════════════════
 function injectCSS() {
@@ -804,6 +954,9 @@ function injectCSS() {
     .hw-wizard-content { text-align:center;padding:8px }
     .hw-wizard-form { text-align:left;max-width:320px;margin:0 auto;line-height:2.2 }
     .hw-wizard-row { display:flex;align-items:center;gap:8px }
+    .qs-mode-btn { flex:1;padding:8px;border:1px solid #333;background:#111;color:#888;cursor:pointer;font-family:inherit;font-size:12px;transition:all 0.2s;text-align:center }
+    .qs-mode-btn.active { border-color:var(--text-primary);color:var(--text-primary);background:#221100 }
+    .qs-mode-btn:hover { border-color:#555 }
   `;
   document.head.appendChild(style);
 }

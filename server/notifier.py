@@ -10,11 +10,15 @@ Configure via environment variables or Settings.
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 
 import httpx
 
 logger = logging.getLogger(__name__)
+
+MAX_RETRIES = 1
+RETRY_DELAY_SEC = 1.0
 
 
 @dataclass
@@ -83,40 +87,50 @@ class Notifier:
             results.append(self._send_telegram(msg))
         return results
 
+    def _send_with_retry(self, name: str, send_fn) -> str:
+        """Execute *send_fn* with up to MAX_RETRIES on transient errors."""
+        last_err = None
+        for attempt in range(1 + MAX_RETRIES):
+            try:
+                r = send_fn()
+                r.raise_for_status()
+                return f"{name}:ok ({r.status_code})"
+            except (httpx.ConnectError, httpx.TimeoutException) as e:
+                last_err = e
+                if attempt < MAX_RETRIES:
+                    logger.warning("%s transient error, retrying: %s", name, e)
+                    time.sleep(RETRY_DELAY_SEC)
+            except Exception as e:
+                logger.error("%s failed: %s", name, e)
+                return f"{name}:error ({e})"
+        logger.error("%s failed after %d retries: %s", name, MAX_RETRIES, last_err)
+        return f"{name}:error ({last_err})"
+
     def _send_webhook(self, payload: dict) -> str:
-        try:
-            r = self._client.post(self.webhook_url, json=payload)
-            r.raise_for_status()
-            return f"webhook:ok ({r.status_code})"
-        except Exception as e:
-            logger.error("Webhook failed: %s", e)
-            return f"webhook:error ({e})"
+        return self._send_with_retry(
+            "webhook",
+            lambda: self._client.post(self.webhook_url, json=payload),
+        )
 
     def _send_line(self, message: str) -> str:
-        try:
-            r = self._client.post(
+        return self._send_with_retry(
+            "line",
+            lambda: self._client.post(
                 "https://notify-api.line.me/api/notify",
                 headers={"Authorization": f"Bearer {self.line_token}"},
                 data={"message": message},
-            )
-            r.raise_for_status()
-            return f"line:ok ({r.status_code})"
-        except Exception as e:
-            logger.error("LINE Notify failed: %s", e)
-            return f"line:error ({e})"
+            ),
+        )
 
     def _send_telegram(self, message: str) -> str:
-        try:
-            url = f"https://api.telegram.org/bot{self.telegram_bot_token}/sendMessage"
-            r = self._client.post(
+        url = f"https://api.telegram.org/bot{self.telegram_bot_token}/sendMessage"
+        return self._send_with_retry(
+            "telegram",
+            lambda: self._client.post(
                 url,
                 json={"chat_id": self.telegram_chat_id, "text": message},
-            )
-            r.raise_for_status()
-            return f"telegram:ok ({r.status_code})"
-        except Exception as e:
-            logger.error("Telegram failed: %s", e)
-            return f"telegram:error ({e})"
+            ),
+        )
 
     def close(self):
         self._client.close()

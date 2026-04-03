@@ -55,8 +55,19 @@ class CalibrationManager:
         result = mgr.finish()
     """
 
-    def __init__(self, duration: float = CALIBRATION_DURATION_SEC):
+    # Log-distance path loss model defaults
+    DEFAULT_REF_POWER_DBM = -45   # RSSI at 1 metre (A)
+    DEFAULT_PATH_LOSS_EXP = 2.5   # indoor environment (n)
+
+    def __init__(
+        self,
+        duration: float = CALIBRATION_DURATION_SEC,
+        ref_power_dbm: float = DEFAULT_REF_POWER_DBM,
+        path_loss_exp: float = DEFAULT_PATH_LOSS_EXP,
+    ):
         self.duration = duration
+        self.ref_power_dbm = ref_power_dbm
+        self.path_loss_exp = path_loss_exp
         self._session: CalibrationSession | None = None
         self._last_result: dict | None = None
         self._background_profile: dict[int, np.ndarray] = {} # node_id -> mean_amp
@@ -141,7 +152,7 @@ class CalibrationManager:
             # RSSI = -10 * n * log10(d) + A
             # Assuming n=2.5 (indoor), A=-45 (1m ref)
             mean_rssi = np.mean(rssi_arr)
-            dist = 10 ** ((-45 - mean_rssi) / (10 * 2.5))
+            dist = 10 ** ((self.ref_power_dbm - mean_rssi) / (10 * self.path_loss_exp))
 
             results[str(nid)] = {
                 "rssi": float(mean_rssi),
@@ -204,7 +215,7 @@ class CalibrationManager:
                     continue
                 rssi_arr = np.array(self._session.rssi_samples.get(nid, [-50]))
                 mean_rssi = float(np.mean(rssi_arr))
-                dist = 10 ** ((-45 - mean_rssi) / (10 * 2.5))
+                dist = 10 ** ((self.ref_power_dbm - mean_rssi) / (10 * self.path_loss_exp))
                 positions[str(nid)] = {
                     "rssi": mean_rssi,
                     "estimated_distance_m": float(dist),

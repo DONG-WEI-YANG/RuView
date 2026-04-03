@@ -1,10 +1,11 @@
-"""System routes: /, /api/status, /api/profiles, /api/joints, /api/vitals, /api/alerts, /api/system/mode."""
+"""System routes: /, /api/status, /api/profiles, /api/joints, /api/vitals, /api/alerts, /api/system/mode, /api/settings/quick."""
 from __future__ import annotations
 
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 
 from server.config import HARDWARE_PROFILES
 from server.services.container import ServiceContainer
@@ -317,3 +318,120 @@ async def set_scene(scene: str, container: ServiceContainer = Depends(get_contai
         )
     result = container.pipeline_svc.set_scene_mode(scene)
     return result
+
+
+# ═══════════════════════════════════════════════════════════
+# Quick Setup — one-page config for field technicians
+# ═══════════════════════════════════════════════════════════
+
+class QuickSetupPayload(BaseModel):
+    """Fields a technician can change from the dashboard Quick Setup panel."""
+    room_width: float | None = None
+    room_depth: float | None = None
+    room_height: float | None = None
+    scene_mode: str | None = None
+    fall_threshold: float | None = None
+    fall_alert_cooldown: int | None = None
+    hardware_profile: str | None = None
+    notify_webhook_url: str | None = None
+    notify_line_token: str | None = None
+    notify_telegram_bot_token: str | None = None
+    notify_telegram_chat_id: str | None = None
+
+
+@router.get("/api/settings/quick")
+async def get_quick_settings(container: ServiceContainer = Depends(get_container)):
+    """Return current values for the Quick Setup panel."""
+    s = container.settings
+    return {
+        "room_width": s.room_width,
+        "room_depth": s.room_depth,
+        "room_height": s.room_height,
+        "scene_mode": s.scene_mode,
+        "fall_threshold": s.fall_threshold,
+        "fall_alert_cooldown": s.fall_alert_cooldown,
+        "hardware_profile": s.hardware_profile,
+        "notify_webhook_url": s.notify_webhook_url,
+        "notify_line_token": s.notify_line_token,
+        "notify_telegram_bot_token": s.notify_telegram_bot_token,
+        "notify_telegram_chat_id": s.notify_telegram_chat_id,
+        "profiles": list(HARDWARE_PROFILES.keys()),
+        "scene_modes": ["safety", "fitness"],
+    }
+
+
+@router.post("/api/settings/quick")
+async def save_quick_settings(
+    payload: QuickSetupPayload,
+    container: ServiceContainer = Depends(get_container),
+):
+    """Apply quick-setup changes live and persist to .env file."""
+    s = container.settings
+    changes = {}
+
+    # ── Apply to running settings ──────────────────────────
+    if payload.room_width is not None and payload.room_width > 0:
+        s.room_width = payload.room_width
+        changes["room_width"] = payload.room_width
+    if payload.room_depth is not None and payload.room_depth > 0:
+        s.room_depth = payload.room_depth
+        changes["room_depth"] = payload.room_depth
+    if payload.room_height is not None and payload.room_height > 0:
+        s.room_height = payload.room_height
+        changes["room_height"] = payload.room_height
+
+    if payload.scene_mode is not None:
+        from server.services.pipeline_service import SCENE_MODES
+        if payload.scene_mode in SCENE_MODES:
+            container.pipeline_svc.set_scene_mode(payload.scene_mode)
+            changes["scene_mode"] = payload.scene_mode
+
+    if payload.fall_threshold is not None and 0 < payload.fall_threshold <= 1.0:
+        s.fall_threshold = payload.fall_threshold
+        changes["fall_threshold"] = payload.fall_threshold
+    if payload.fall_alert_cooldown is not None and payload.fall_alert_cooldown >= 0:
+        s.fall_alert_cooldown = payload.fall_alert_cooldown
+        changes["fall_alert_cooldown"] = payload.fall_alert_cooldown
+
+    if payload.hardware_profile is not None and payload.hardware_profile in HARDWARE_PROFILES:
+        s.hardware_profile = payload.hardware_profile
+        s.apply_hardware_profile()
+        changes["hardware_profile"] = payload.hardware_profile
+
+    for key in ("notify_webhook_url", "notify_line_token",
+                "notify_telegram_bot_token", "notify_telegram_chat_id"):
+        val = getattr(payload, key, None)
+        if val is not None:
+            setattr(s, key, val)
+            changes[key] = val
+
+    # ── Persist to .env ────────────────────────────────────
+    if changes:
+        _persist_env(changes)
+
+    return {"status": "saved", "applied": changes}
+
+
+def _persist_env(changes: dict) -> None:
+    """Merge *changes* into the .env file (create if missing)."""
+    env_path = Path(".env")
+    lines: list[str] = []
+    if env_path.exists():
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+
+    keys_written = set()
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("#") or "=" not in stripped:
+            continue
+        key = stripped.split("=", 1)[0].strip()
+        if key in changes:
+            lines[i] = f"{key}={changes[key]}"
+            keys_written.add(key)
+
+    # Append any keys not already in the file
+    for key, val in changes.items():
+        if key not in keys_written:
+            lines.append(f"{key}={val}")
+
+    env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")

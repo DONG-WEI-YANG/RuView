@@ -321,8 +321,8 @@ class VitalSignsExtractor:
             self.sleep_stage = "light"
         else:
             # Very regular breathing + very low motion
-            # Deep sleep tends to have slower breathing (10-14 BPM)
-            if bpm > 0 and bpm < 16:
+            # Deep sleep (N3/SWS) breathing is typically 10-14 BPM
+            if bpm > 0 and bpm < 14:
                 self.sleep_stage = "deep"
             else:
                 self.sleep_stage = "light"

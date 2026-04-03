@@ -12,6 +12,7 @@ Supports multiple ESP32 variants without manual configuration.
 from __future__ import annotations
 
 import logging
+import os
 import re
 import shutil
 import subprocess
@@ -19,9 +20,10 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# Paths (avoid spaces — ESP-IDF can't handle them)
-BUILD_DIR = Path("C:/temp/csi-node")
-PIO_EXE = "C:/temp/pio-env/Scripts/pio.exe"
+# Paths — configurable via environment variables for field deployment
+# Defaults match the original development machine layout.
+BUILD_DIR = Path(os.environ.get("CSI_BUILD_DIR", "C:/temp/csi-node"))
+PIO_EXE = os.environ.get("CSI_PIO_EXE", "C:/temp/pio-env/Scripts/pio.exe")
 OUTPUT_DIR = Path(__file__).parent.parent / "dashboard" / "public" / "firmware"
 
 # ── Chip → PlatformIO board mapping ─────────────────────────
