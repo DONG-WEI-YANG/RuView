@@ -18,12 +18,13 @@ class VitalsService:
         self,
         sample_rate: float,
         emitter: EventEmitter,
-        emit_interval_sec: float = 1.0,
+        emit_interval_sec: float = 0.5,
+        num_subcarriers: int = 56,
     ):
         self._emitter = emitter
         self._emit_interval = emit_interval_sec
         self._last_emit = 0.0
-        self.extractor = VitalSignsExtractor(sample_rate=sample_rate)
+        self.extractor = VitalSignsExtractor(sample_rate=sample_rate, num_subcarriers=num_subcarriers)
         self.multi_person = MultiPersonTracker(
             max_persons=4, sample_rate=sample_rate,
         )

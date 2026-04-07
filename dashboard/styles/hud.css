@@ -2,30 +2,31 @@
    hud.css — HUD overlay, vital sign displays, confidence bars, side panel, node list
 */
 
-/* ── Vitals HUD ────────────────────────────────────────── */
+/* ── Vitals HUD — readable bottom-left overlay ────────── */
 #vitals-hud {
     position: absolute;
-    top: 20px; left: 20px;
+    bottom: 8px; left: 8px;
     display: flex;
-    flex-direction: column;
-    gap: 12px;
+    flex-direction: row;
+    gap: 4px;
     pointer-events: none;
+    z-index: 10;
 }
 .hud-card {
-    background: rgba(0, 0, 0, 0.8);
-    border: 2px solid var(--text-primary);
-    padding: 10px;
-    border-radius: 0;
+    background: rgba(0, 0, 0, 0.75);
+    border: 1px solid rgba(255, 176, 0, 0.4);
+    padding: 4px 8px;
+    border-radius: 4px;
     display: flex;
     align-items: center;
-    gap: 12px;
-    box-shadow: 0 0 10px rgba(255, 176, 0, 0.2);
-    min-width: 260px;
+    gap: 6px;
+    backdrop-filter: blur(4px);
+    min-width: 0;
 }
 .hud-icon {
-    font-size: 24px;
+    font-size: 18px;
     color: var(--text-primary);
-    width: 32px; text-align: center;
+    width: 22px; text-align: center;
 }
 .hud-info {
     display: flex;
@@ -33,7 +34,7 @@
     flex: 1;
 }
 .hud-label {
-    font-size: 10px;
+    font-size: 9px;
     color: var(--text-secondary);
     letter-spacing: 1px;
 }
@@ -44,9 +45,9 @@
     text-shadow: 0 0 5px var(--text-primary);
 }
 .hud-conf {
-    height: 4px;
+    height: 3px;
     background: #332200;
-    margin-top: 4px;
+    margin-top: 2px;
     width: 100%;
 }
 .hud-conf-fill {
@@ -59,15 +60,25 @@
 .hud-conf-fill.heart { background: var(--accent-red); box-shadow: 0 0 5px var(--accent-red); }
 .hud-conf-fill.stress { background: var(--accent-red); box-shadow: 0 0 5px var(--accent-red); }
 
-/* ── Side Panel ────────────────────────────────────────── */
+/* ── Side Panel — narrow, semi-transparent ────────────── */
 #info-panel {
-    width: 280px;
-    background: var(--bg-panel);
-    padding: 16px;
+    width: 170px;
+    background: rgba(10, 10, 10, 0.75);
+    padding: 8px;
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    border-left: 2px solid var(--border-color);
+    gap: 6px;
+    border-left: 1px solid rgba(255, 176, 0, 0.3);
+    backdrop-filter: blur(4px);
+    overflow-y: auto;
+}
+#info-panel h3 {
+    font-size: 10px;
+    margin: 0 0 2px;
+}
+#info-panel p {
+    font-size: 14px;
+    margin: 0;
 }
 
 #fall-status { color: var(--accent-green); }

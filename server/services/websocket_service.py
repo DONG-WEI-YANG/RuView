@@ -50,6 +50,17 @@ class WebSocketService:
             return None
         return handle_client_message(conn, raw)
 
+    async def broadcast_raw(self, msg: str) -> None:
+        """Send a raw JSON string to all connected clients."""
+        dead = set()
+        for ws in list(self._connections):
+            try:
+                await ws.send_text(msg)
+            except Exception:
+                dead.add(ws)
+        for ws in dead:
+            self._connections.pop(ws, None)
+
     async def broadcast_envelope(self, envelope: Envelope) -> None:
         """Send an envelope to all subscribed connections."""
         v1_json = envelope.model_dump_json()

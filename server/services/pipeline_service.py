@@ -265,6 +265,11 @@ class PipelineService:
             conf.append(round(min(1.0, max(0.0, base)), 2))
         return conf
 
+    _PRESENCE_GRID_W = 12
+    _PRESENCE_GRID_H = 8
+    _presence_grid = None
+    _presence_decay = 0.80  # faster fade so heat doesn't accumulate
+
     def _flush(self, frame: CSIFrame) -> None:
         if self.pipeline is not None:
             self.pipeline.flush_frame()
@@ -283,8 +288,120 @@ class PipelineService:
                                 "joint_confidence": joint_conf,
                             })
                         )
+                        # Generate and emit presence heatmap from joint positions
+                        grid = self._update_presence_grid(self.latest_joints)
+                        if grid is not None:
+                            asyncio.ensure_future(
+                                self._emitter.emit("presence", {"grid": grid})
+                            )
                 except RuntimeError:
                     pass
+
+    _presence_emit_interval = 0.2  # emit heatmap at ~5 Hz, not every frame
+    _presence_last_emit = 0.0
+
+    _presence_emit_interval = 0.2  # ~5 Hz
+    _presence_last_emit = 0.0
+    _prev_amplitudes: dict = {}  # {node_id: prev_amplitude} for motion detection
+
+    def _update_presence_grid(self, joints) -> list | None:
+        """Build room-scale presence grid from per-node CSI motion energy.
+
+        Each node gets a fixed grid region. Motion energy (amplitude change)
+        at that node lights up its region. No fixed positions needed —
+        nodes are evenly distributed across the grid.
+        """
+        import numpy as np
+        now = time.time()
+        if now - self._presence_last_emit < self._presence_emit_interval:
+            return None
+        self._presence_last_emit = now
+
+        gw, gh = self._PRESENCE_GRID_W, self._PRESENCE_GRID_H
+
+        if self._presence_grid is None:
+            self._presence_grid = [[0.0] * gw for _ in range(gh)]
+
+        # Decay
+        for gy in range(gh):
+            for gx in range(gw):
+                self._presence_grid[gy][gx] *= self._presence_decay
+
+        # Compute motion + RSSI per node
+        active_nodes = sorted(self._node_frames.keys())
+        n = len(active_nodes)
+        if n == 0:
+            return [row[:] for row in self._presence_grid]
+
+        node_weights = {}  # nid → (motion, rssi_weight)
+        total_motion = 0.0
+
+        for nid in active_nodes:
+            frame = self._node_frames[nid]
+            if frame.amplitude is None:
+                continue
+
+            amp = frame.amplitude.astype(np.float32)
+            prev = self._prev_amplitudes.get(nid)
+            self._prev_amplitudes[nid] = amp.copy()
+
+            motion = 0.0
+            if prev is not None:
+                min_len = min(len(amp), len(prev))
+                motion = float(np.mean(np.abs(amp[:min_len] - prev[:min_len])))
+
+            rssi = max(-80, min(-10, frame.rssi))
+            rssi_w = ((rssi + 80) / 70.0) ** 0.5
+            node_weights[nid] = (motion, rssi_w)
+            total_motion += motion * rssi_w
+
+        if total_motion < 0.5:
+            return [row[:] for row in self._presence_grid]
+
+        # Position blob using RSSI-weighted interpolation between nodes
+        # Node layout: evenly spaced left→right, centered vertically
+        cy_center = (gh - 1) / 2.0  # true center: 3.5 for 8-row grid
+        node_grid_pos = {}
+        for idx, nid in enumerate(active_nodes):
+            if n == 1:
+                node_grid_pos[nid] = (gw / 2.0, cy_center)
+            else:
+                # Spread nodes across X, center on Y
+                x = (idx + 0.5) / n * gw
+                node_grid_pos[nid] = (x, cy_center)
+
+        # Weighted centroid — blob moves toward the node with more activity
+        cx_f, cy_f, w_sum = 0.0, 0.0, 0.0
+        for nid in active_nodes:
+            motion, rssi_w = node_weights.get(nid, (0, 0))
+            w = motion * rssi_w
+            gpos = node_grid_pos[nid]
+            cx_f += gpos[0] * w
+            cy_f += gpos[1] * w
+            w_sum += w
+
+        if w_sum < 0.01:
+            return [row[:] for row in self._presence_grid]
+
+        cx = round(cx_f / w_sum)
+        cy = round(cy_f / w_sum)
+        cx = max(1, min(gw - 2, cx))
+        cy = max(1, min(gh - 2, cy))
+        heat = min(1.0, total_motion / 30.0)
+
+        # Paint focused blob (spread=1 for tight heat)
+        spread = 1
+        for dy in range(-spread, spread + 1):
+            for dx in range(-spread, spread + 1):
+                nx, ny = cx + dx, cy + dy
+                if 0 <= nx < gw and 0 <= ny < gh:
+                    dist = (dx * dx + dy * dy) ** 0.5
+                    falloff = max(0, 1.0 - dist / (spread + 1))
+                    self._presence_grid[ny][nx] = min(
+                        1.0, self._presence_grid[ny][nx] + heat * falloff * 0.3
+                    )
+
+        return [row[:] for row in self._presence_grid]
 
     # ── Multi-person tracking ─────────────────────────────────
 

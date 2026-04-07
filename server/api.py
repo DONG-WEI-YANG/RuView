@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, JSONResponse
 
 from server.config import Settings
 from server.csi_receiver import CSIReceiver
@@ -36,13 +37,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         receiver = CSIReceiver(settings)
 
         def on_csi(frame, trigger_pipeline=True):
-            container.signal_quality.on_frame(frame)
-            if container.calibration.is_active:
-                container.calibration.on_frame(frame)
-            if frame.amplitude is not None:
-                import numpy as np
-                container.vitals.push_csi(frame.amplitude.astype(np.float32))
-            container.pipeline_svc.on_frame(frame, trigger_pipeline=trigger_pipeline)
+            try:
+                container.signal_quality.on_frame(frame)
+                if container.calibration.is_active:
+                    container.calibration.on_frame(frame)
+                if frame.amplitude is not None:
+                    import numpy as np
+                    container.vitals.push_csi(frame.amplitude.astype(np.float32))
+                container.pipeline_svc.on_frame(frame, trigger_pipeline=trigger_pipeline)
+            except Exception as e:
+                logger.error("CSI frame processing error: %s", e)
 
         receiver.on_frame = on_csi
         recv_task = asyncio.create_task(receiver.start())
@@ -77,6 +81,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(calibration.router)
     app.include_router(data.router)
     app.include_router(ws.router)
+
+    # Root favicon
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def favicon():
+        fav = Path(__file__).parent.parent / "favicon.ico"
+        if fav.exists():
+            return FileResponse(fav)
+        return JSONResponse({"error": "not found"}, status_code=404)
 
     # Static files — prefer Vite build output, fall back to source
     dist_dir = Path(__file__).parent.parent / "dist" / "dashboard"

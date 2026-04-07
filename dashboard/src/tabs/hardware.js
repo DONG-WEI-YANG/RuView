@@ -87,7 +87,10 @@ function buildDOM(container) {
   placeSection.appendChild(placeGrid);
   scroll.appendChild(placeSection);
 
-  // ── SECTION 3: FIRMWARE & OTA ───────────────────────────
+  // ── SECTION 3: DATA COLLECTION & TRAINING ────────────────
+  scroll.appendChild(buildDataCollectionPanel());
+
+  // ── SECTION 4: FIRMWARE & OTA ───────────────────────────
   const fwSection = makeEl('div', { className: 'panel', id: 'hw-firmware-panel' });
   const fwHeader = makeEl('div', { className: 'hw-section-header' });
   fwHeader.appendChild(makeEl('h2', { textContent: 'Firmware & OTA' }));
@@ -99,6 +102,291 @@ function buildDOM(container) {
   scroll.appendChild(fwSection);
 
   container.appendChild(scroll);
+}
+
+// ══════════════════════════════════════════════════════════
+// DATA COLLECTION & TRAINING PANEL
+// ══════════════════════════════════════════════════════════
+let collectingActivity = '';
+let collectingState = false;
+let trainState = 'idle'; // idle | running | complete | failed
+
+function buildDataCollectionPanel() {
+  const panel = makeEl('div', { className: 'panel', id: 'hw-datacollect-panel' });
+
+  const header = makeEl('div', { className: 'hw-section-header' });
+  header.appendChild(makeEl('h2', { textContent: 'Data Collection & Training' }));
+  panel.appendChild(header);
+
+  const desc = makeEl('div', { style: 'color:#888;font-size:12px;margin-bottom:12px;padding:0 8px' });
+  desc.textContent = 'Record real CSI + camera pose data, then train the pose model — all from here.';
+  panel.appendChild(desc);
+
+  // ── Camera preview + Controls row ──
+  const previewRow = makeEl('div', { style: 'display:flex;gap:12px;padding:0 8px;margin-bottom:12px;flex-wrap:wrap' });
+
+  // Camera feed
+  const camBox = makeEl('div', { style: 'flex:0 0 320px' });
+  const camImg = document.createElement('img');
+  camImg.id = 'hw-cam-preview';
+  camImg.style.cssText = 'width:320px;height:240px;border:1px solid #333;border-radius:4px;background:#000;object-fit:cover';
+  camImg.alt = 'Camera preview — click Start Camera';
+  camBox.appendChild(camImg);
+
+  const camStatus = makeEl('div', { id: 'hw-cam-status', style: 'color:#555;font-size:10px;margin-top:4px;text-align:center' });
+  camStatus.textContent = 'Camera off';
+  camBox.appendChild(camStatus);
+  previewRow.appendChild(camBox);
+
+  // Controls column
+  const ctrlCol = makeEl('div', { style: 'flex:1;min-width:200px;display:flex;flex-direction:column;gap:8px' });
+
+  // Camera start button
+  const camBtn = makeEl('button', { id: 'hw-cam-btn', textContent: '📷 Start Camera' });
+  camBtn.style.cssText = 'background:#111;border:1px solid #0af;color:#0af;padding:6px 12px;border-radius:3px;font-size:12px;cursor:pointer;font-family:monospace;width:fit-content';
+  camBtn.addEventListener('click', toggleCamera);
+  ctrlCol.appendChild(camBtn);
+
+  // Activity select + Record row
+  const collectBox = makeEl('div', { id: 'hw-collect-box', style: 'display:flex;gap:8px;flex-wrap:wrap;align-items:center' });
+
+  const actSelect = document.createElement('select');
+  actSelect.id = 'hw-activity-select';
+  actSelect.style.cssText = 'background:#111;border:1px solid #333;color:#0af;padding:4px 8px;border-radius:3px;font-size:12px;font-family:monospace';
+  ['standing', 'walking', 'sitting', 'exercising', 'waving', 'stretching', 'turning'].forEach(a => {
+    const opt = document.createElement('option');
+    opt.value = a;
+    opt.textContent = a;
+    actSelect.appendChild(opt);
+  });
+  collectBox.appendChild(actSelect);
+
+  const recordBtn = makeEl('button', { id: 'hw-record-btn', textContent: '⏺ Record' });
+  recordBtn.style.cssText = 'background:#111;border:1px solid #c00;color:#f44;padding:4px 12px;border-radius:3px;font-size:12px;cursor:pointer;font-family:monospace';
+  recordBtn.addEventListener('click', toggleRecording);
+  collectBox.appendChild(recordBtn);
+  ctrlCol.appendChild(collectBox);
+
+  const collectStatus = makeEl('div', { id: 'hw-collect-status', style: 'color:#888;font-size:11px' });
+  ctrlCol.appendChild(collectStatus);
+
+  // Frames counter
+  const frameCounter = makeEl('div', { id: 'hw-frame-counter', style: 'color:#555;font-size:11px' });
+  ctrlCol.appendChild(frameCounter);
+
+  previewRow.appendChild(ctrlCol);
+  panel.appendChild(previewRow);
+
+  // ── Train section ──
+  const trainBox = makeEl('div', { style: 'display:flex;gap:8px;align-items:center;padding:0 8px;margin-bottom:8px' });
+
+  const trainBtn = makeEl('button', { id: 'hw-train-btn', textContent: '🧠 Train Model' });
+  trainBtn.style.cssText = 'background:#111;border:1px solid #f80;color:#f80;padding:4px 12px;border-radius:3px;font-size:12px;cursor:pointer;font-family:monospace';
+  trainBtn.addEventListener('click', startTraining);
+  trainBox.appendChild(trainBtn);
+
+  const epochInput = makeEl('input', { id: 'hw-epoch-input', type: 'number', value: '80' });
+  epochInput.style.cssText = 'background:#111;border:1px solid #333;color:#0af;padding:4px;border-radius:3px;width:50px;font-size:12px;font-family:monospace';
+  const epochLabel = makeEl('span', { textContent: ' epochs', style: 'color:#888;font-size:11px' });
+  trainBox.appendChild(epochInput);
+  trainBox.appendChild(epochLabel);
+
+  const trainStatus = makeEl('span', { id: 'hw-train-status', style: 'color:#888;font-size:11px;margin-left:8px' });
+  trainBox.appendChild(trainStatus);
+  panel.appendChild(trainBox);
+
+  // ── Train log ──
+  const trainLog = makeEl('pre', { id: 'hw-train-log' });
+  trainLog.style.cssText = 'background:#0a0a0a;border:1px solid #222;color:#888;padding:8px;border-radius:3px;font-size:10px;max-height:150px;overflow-y:auto;margin:0 8px 8px;display:none;white-space:pre-wrap';
+  panel.appendChild(trainLog);
+
+  return panel;
+}
+
+let cameraRunning = false;
+let camPollTimer = null;
+
+async function toggleCamera() {
+  const btn = document.getElementById('hw-cam-btn');
+  const status = document.getElementById('hw-cam-status');
+  if (!btn) return;
+
+  if (!cameraRunning) {
+    status.textContent = 'Starting camera...';
+    try {
+      const r = await fetch('/api/camera/start', { method: 'POST' });
+      if (r.ok) {
+        cameraRunning = true;
+        btn.textContent = '⏹ Stop Camera';
+        btn.style.borderColor = '#f44';
+        btn.style.color = '#f44';
+        status.textContent = 'Camera running';
+        status.style.color = '#0f0';
+        startCamPoll();
+      }
+    } catch (e) { status.textContent = 'Failed to start'; }
+  } else {
+    stopCamPoll();
+    await fetch('/api/camera/stop', { method: 'POST' });
+    cameraRunning = false;
+    btn.textContent = '📷 Start Camera';
+    btn.style.borderColor = '#0af';
+    btn.style.color = '#0af';
+    status.textContent = 'Camera off';
+    status.style.color = '#555';
+    const img = document.getElementById('hw-cam-preview');
+    if (img) img.src = '';
+  }
+}
+
+function startCamPoll() {
+  stopCamPoll();
+  const poll = () => {
+    const img = document.getElementById('hw-cam-preview');
+    if (!img || !cameraRunning) return;
+    // Append timestamp to bust cache
+    img.src = '/api/camera/frame?t=' + Date.now();
+    // Also update frame counter
+    fetch('/api/collect/status').then(r => r.json()).then(d => {
+      const fc = document.getElementById('hw-frame-counter');
+      if (fc) {
+        if (d.collecting) {
+          fc.textContent = `Recording: ${d.frames} frames | CSI: ${d.csi_frames} | Pose: ${d.pose_detected ? '✓' : '✗'}`;
+          fc.style.color = '#f44';
+        } else {
+          fc.textContent = `Camera ready | CSI nodes: ${d.nodes_seen} | Pose: ${d.pose_detected ? '✓' : '✗'}`;
+          fc.style.color = '#888';
+        }
+      }
+    }).catch(() => {});
+    camPollTimer = setTimeout(poll, 200); // ~5 FPS preview
+  };
+  poll();
+}
+
+function stopCamPoll() {
+  if (camPollTimer) { clearTimeout(camPollTimer); camPollTimer = null; }
+}
+
+async function toggleRecording() {
+  const btn = document.getElementById('hw-record-btn');
+  const status = document.getElementById('hw-collect-status');
+  const select = document.getElementById('hw-activity-select');
+  if (!btn) return;
+
+  if (!collectingState) {
+    const activity = select.value;
+    try {
+      const r = await fetch(`/api/collect/start?activity=${activity}`, { method: 'POST' });
+      const d = await r.json();
+      if (r.ok) {
+        collectingState = true;
+        collectingActivity = activity;
+        btn.textContent = '⏹ Stop';
+        btn.style.borderColor = '#0f0';
+        btn.style.color = '#0f0';
+        select.disabled = true;
+        status.textContent = `Recording ${activity}...`;
+        status.style.color = '#f44';
+      } else {
+        status.textContent = d.error || 'Failed';
+        status.style.color = '#f44';
+      }
+    } catch (e) { status.textContent = 'Server error'; }
+  } else {
+    try {
+      const r = await fetch('/api/collect/stop', { method: 'POST' });
+      const d = await r.json();
+      collectingState = false;
+      btn.textContent = '⏺ Record';
+      btn.style.borderColor = '#c00';
+      btn.style.color = '#f44';
+      select.disabled = false;
+      status.textContent = d.file ? `Saved ${d.frames} frames → ${d.file}` : 'No frames captured';
+      status.style.color = '#0f0';
+      refreshDataFiles();
+    } catch (e) { status.textContent = 'Stop failed'; }
+  }
+}
+
+async function refreshDataFiles() {
+  const el = document.getElementById('hw-data-files');
+  if (!el) return;
+  try {
+    const r = await fetch('/api/collect/status');
+    const d = await r.json();
+    // Also list saved files
+    const fr = await fetch('/api/models');
+    const models = await fr.json();
+
+    el.textContent = '';
+    const title = makeEl('div', { textContent: 'Training Data', style: 'color:#888;font-size:10px;margin-bottom:4px' });
+    el.appendChild(title);
+
+    const info = makeEl('div', { style: 'color:#555;font-size:11px' });
+    info.textContent = `Activities: ${d.activities?.join(', ') || 'none'}  |  CSI nodes: ${d.nodes_seen || 0}`;
+    el.appendChild(info);
+  } catch (e) {}
+}
+
+async function startTraining() {
+  const btn = document.getElementById('hw-train-btn');
+  const status = document.getElementById('hw-train-status');
+  const log = document.getElementById('hw-train-log');
+  const epochInput = document.getElementById('hw-epoch-input');
+  if (!btn || trainState === 'running') return;
+
+  const epochs = parseInt(epochInput.value) || 80;
+  try {
+    const r = await fetch(`/api/train/start?epochs=${epochs}`, { method: 'POST' });
+    const d = await r.json();
+    if (r.ok) {
+      trainState = 'running';
+      btn.disabled = true;
+      btn.style.opacity = '0.5';
+      status.textContent = 'Training...';
+      status.style.color = '#f80';
+      log.style.display = 'block';
+      log.textContent = 'Training started...\n';
+      pollTrainStatus();
+    } else {
+      status.textContent = d.error || 'Failed';
+      status.style.color = '#f44';
+    }
+  } catch (e) { status.textContent = 'Server error'; }
+}
+
+async function pollTrainStatus() {
+  const status = document.getElementById('hw-train-status');
+  const log = document.getElementById('hw-train-log');
+  const btn = document.getElementById('hw-train-btn');
+
+  try {
+    const r = await fetch('/api/train/status');
+    const d = await r.json();
+
+    if (d.log && d.log.length) {
+      log.textContent = d.log.join('\n');
+      log.scrollTop = log.scrollHeight;
+    }
+
+    if (d.status === 'running') {
+      setTimeout(pollTrainStatus, 2000);
+    } else {
+      trainState = d.status;
+      btn.disabled = false;
+      btn.style.opacity = '1';
+      if (d.status === 'complete') {
+        status.textContent = '✓ Training complete! Restart server to load new model.';
+        status.style.color = '#0f0';
+      } else {
+        status.textContent = `✗ Training failed (code ${d.returncode})`;
+        status.style.color = '#f44';
+      }
+    }
+  } catch (e) {
+    setTimeout(pollTrainStatus, 3000);
+  }
 }
 
 // ══════════════════════════════════════════════════════════

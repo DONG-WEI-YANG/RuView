@@ -38,18 +38,21 @@ CHIP_BOARDS = {
 
 
 def detect_chip(port: str) -> dict:
-    """Detect ESP32 chip type on a serial port via esptool.
+    """Detect ESP32 chip type and flash size on a serial port via esptool.
 
-    Returns {"chip": "esp32c3", "port": "COM10", "board": "esp32-c3-devkitm-1", ...}
+    Returns {"chip": "esp32c3", "port": "COM10", "board": "esp32-c3-devkitm-1",
+             "flash_size": "4MB", ...}
     """
     esptool_cmd = _find_esptool()
     if not esptool_cmd:
         return {"error": "esptool not found", "chip": None, "port": port}
 
     logger.info("Detecting chip on %s ...", port)
+
+    # Run flash_id instead of chip_id — it returns both chip type AND flash size
     try:
         result = subprocess.run(
-            [*esptool_cmd, "--port", port, "chip_id"],
+            [*esptool_cmd, "--port", port, "flash_id"],
             capture_output=True, text=True, timeout=15,
         )
         output = result.stdout + result.stderr
@@ -87,11 +90,22 @@ def detect_chip(port: str) -> dict:
         }
 
     info = CHIP_BOARDS[chip_id]
+
+    # Parse actual flash size from esptool flash_id output
+    # Example: "Detected flash size: 8MB"
+    actual_flash = info["flash_size"]  # fallback to table
+    m = re.search(r"Detected flash size:\s*(\d+MB)", output)
+    if m:
+        actual_flash = m.group(1)
+        if actual_flash != info["flash_size"]:
+            logger.info("Flash size override: table=%s, actual=%s",
+                        info["flash_size"], actual_flash)
+
     return {
         "chip": chip_id,
         "port": port,
         "board": info["board"],
-        "flash_size": info["flash_size"],
+        "flash_size": actual_flash,
         "name": info["name"],
         "detected": True,
     }
@@ -146,8 +160,14 @@ def update_sdkconfig(
     server_ip: str,
     udp_port: int = 5005,
     node_id: int = 1,
+    flash_size: str = "",
 ) -> Path:
-    """Write WiFi + server config into sdkconfig.defaults."""
+    """Write WiFi + server config into sdkconfig.defaults.
+
+    Args:
+        flash_size: e.g. "4MB", "8MB". If empty, auto-detect is skipped
+                    and existing flash size config is preserved.
+    """
     if not BUILD_DIR.exists():
         raise FileNotFoundError(
             f"Build directory {BUILD_DIR} not found. "
@@ -159,14 +179,36 @@ def update_sdkconfig(
     if defaults.exists():
         lines = defaults.read_text(encoding="utf-8", errors="replace").splitlines()
 
-    # Remove old WiFi/server/target lines (both CSI_ and non-CSI_ prefixed)
+    # Remove old WiFi/server/target/flash-size lines
     remove_keys = [
         "CONFIG_WIFI_SSID", "CONFIG_WIFI_PASSWORD",
         "CONFIG_CSI_WIFI_SSID", "CONFIG_CSI_WIFI_PASSWORD",
         "CONFIG_CSI_TARGET_IP", "CONFIG_CSI_TARGET_PORT",
         "CONFIG_CSI_NODE_ID", "CONFIG_IDF_TARGET",
+        "CONFIG_ESPTOOLPY_FLASHSIZE",
     ]
-    lines = [l for l in lines if not any(k in l for k in remove_keys)]
+    # Deduplicate CONFIG_ESP_WIFI_CSI_ENABLED while we're at it
+    seen_csi_enabled = False
+    cleaned = []
+    for l in lines:
+        if any(k in l for k in remove_keys):
+            continue
+        if "CONFIG_ESP_WIFI_CSI_ENABLED" in l:
+            if seen_csi_enabled:
+                continue
+            seen_csi_enabled = True
+        cleaned.append(l)
+    lines = cleaned
+
+    # Flash size — map "8MB" → CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+    if flash_size:
+        size_key = flash_size.upper().replace("B", "B")  # normalize
+        lines.append(f'CONFIG_ESPTOOLPY_FLASHSIZE_{size_key}=y')
+        lines.append(f'CONFIG_ESPTOOLPY_FLASHSIZE="{flash_size}"')
+        logger.info("Flash size set to %s", flash_size)
+
+    # Route console to USB-JTAG so serial monitor works on the USB port
+    lines.append('CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y')
 
     lines.extend([
         f'CONFIG_CSI_WIFI_SSID="{ssid}"',
@@ -178,7 +220,8 @@ def update_sdkconfig(
     ])
 
     defaults.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    logger.info("sdkconfig.defaults updated: SSID=%s, IP=%s, node=%d", ssid, server_ip, node_id)
+    logger.info("sdkconfig.defaults updated: SSID=%s, IP=%s, node=%d, flash=%s",
+                ssid, server_ip, node_id, flash_size or "unchanged")
     return BUILD_DIR
 
 
@@ -307,9 +350,10 @@ def auto_build_and_flash(
         if not ssid:
             return {"success": False, "step": "wifi", "error": "WiFi not detected"}
 
-    # 3. Configure
+    # 3. Configure (pass detected flash size so sdkconfig matches hardware)
+    flash_size = chip_info.get("flash_size", "")
     update_platformio_ini(chip, port, node_id)
-    update_sdkconfig(ssid, password, server_ip, udp_port, node_id)
+    update_sdkconfig(ssid, password, server_ip, udp_port, node_id, flash_size=flash_size)
     clean_build(node_id)
 
     # 4. Build

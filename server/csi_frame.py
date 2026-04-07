@@ -78,13 +78,24 @@ def parse_csi_frame(data: bytes) -> CSIFrame | None:
     # I/Q data starts at offset 20
     iq_count = num_antennas * num_sub
     csi_offset = HEADER_SIZE
-    csi_bytes = iq_count * 4  # 2 int16 (real + imag) per subcarrier
-    if len(data) < csi_offset + csi_bytes:
+    remaining = len(data) - csi_offset
+
+    # ESP-IDF CSI uses int8 I/Q pairs (2 bytes per subcarrier).
+    # Detect format by checking available data length.
+    bytes_int16 = iq_count * 4  # int16 pairs: 4 bytes/subcarrier
+    bytes_int8 = iq_count * 2   # int8 pairs:  2 bytes/subcarrier
+
+    if remaining >= bytes_int16:
+        csi_raw = np.frombuffer(
+            data, dtype=np.int16, offset=csi_offset, count=iq_count * 2
+        )
+    elif remaining >= bytes_int8:
+        csi_raw = np.frombuffer(
+            data, dtype=np.int8, offset=csi_offset, count=iq_count * 2
+        ).astype(np.int16)
+    else:
         return None
 
-    csi_raw = np.frombuffer(
-        data, dtype=np.int16, offset=csi_offset, count=iq_count * 2
-    )
     real = csi_raw[0::2].astype(np.float32)
     imag = csi_raw[1::2].astype(np.float32)
 

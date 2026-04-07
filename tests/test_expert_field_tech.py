@@ -404,3 +404,108 @@ class TestFirmwareProtocolOnWire:
             frames.append(f)
         seqs = [f.sequence for f in frames]
         assert seqs == [0, 1, 2, 3, 4]
+
+
+# ═══════════════════════════════════════════════════════════
+# 9. Quick Setup — technician's first-day installation flow
+# ═══════════════════════════════════════════════════════════
+
+class TestQuickSetupInstallationFlow:
+    """Technician arrives on-site, opens the Hardware tab, and runs Quick Setup
+    before doing spatial calibration.  These tests walk the exact same path.
+    """
+
+    @pytest.mark.asyncio
+    async def test_defaults_match_typical_room(self, client):
+        """Default 4×4×2.8 m is a typical bedroom — no guesswork for tech."""
+        r = await client.get("/api/settings/quick")
+        d = r.json()
+        assert 2.0 <= d["room_width"] <= 8.0
+        assert 2.0 <= d["room_depth"] <= 8.0
+        assert 2.0 <= d["room_height"] <= 4.0
+
+    @pytest.mark.asyncio
+    async def test_profiles_listed_for_hardware_selection(self, client):
+        """Technician picks the right ESP32 variant from the list.
+        /api/settings/quick returns profiles as a list of string IDs.
+        """
+        r = await client.get("/api/settings/quick")
+        profiles = r.json()["profiles"]  # list of str IDs, e.g. ["esp32s3", ...]
+        assert "esp32s3" in profiles  # standard board in BOM
+
+    @pytest.mark.asyncio
+    async def test_scene_modes_listed_for_customer_use_case(self, client):
+        """Tech sets scene based on customer: elderly home vs rehab clinic."""
+        r = await client.get("/api/settings/quick")
+        modes = r.json()["scene_modes"]
+        assert "safety" in modes
+        assert "fitness" in modes
+
+    @pytest.mark.asyncio
+    async def test_large_room_accepted(self, client, tmp_path, monkeypatch):
+        """Hospital ward: 10×8×3.5 m — must be accepted, not rejected."""
+        monkeypatch.chdir(tmp_path)
+        r = await client.post("/api/settings/quick", json={
+            "room_width": 10.0, "room_depth": 8.0, "room_height": 3.5,
+        })
+        d = r.json()
+        assert d["applied"]["room_width"] == 10.0
+        assert d["applied"]["room_depth"] == 8.0
+
+    @pytest.mark.asyncio
+    async def test_line_notify_token_saved(self, client, tmp_path, monkeypatch):
+        """Tech enters LINE token for the nursing station group."""
+        monkeypatch.chdir(tmp_path)
+        r = await client.post("/api/settings/quick", json={
+            "notify_line_token": "LINE_TOKEN_HOSPITAL_ICU",
+        })
+        assert r.json()["applied"]["notify_line_token"] == "LINE_TOKEN_HOSPITAL_ICU"
+
+    @pytest.mark.asyncio
+    async def test_telegram_bot_and_chat_id_saved(self, client, tmp_path, monkeypatch):
+        """Tech enters Telegram credentials for on-call alert channel."""
+        monkeypatch.chdir(tmp_path)
+        r = await client.post("/api/settings/quick", json={
+            "notify_telegram_bot_token": "7654321:AAB_TOKEN",
+            "notify_telegram_chat_id": "-100999888",
+        })
+        applied = r.json()["applied"]
+        assert "notify_telegram_bot_token" in applied
+        assert "notify_telegram_chat_id" in applied
+
+    @pytest.mark.asyncio
+    async def test_fall_threshold_lower_for_elderly(self, client, tmp_path, monkeypatch):
+        """Elderly ward: threshold 0.5 (more sensitive) vs default 0.6."""
+        monkeypatch.chdir(tmp_path)
+        r = await client.post("/api/settings/quick", json={"fall_threshold": 0.5})
+        assert r.json()["applied"]["fall_threshold"] == 0.5
+
+    @pytest.mark.asyncio
+    async def test_full_day1_installation_sequence(self, client, tmp_path, monkeypatch):
+        """Complete day-1 checklist: configure → verify → calibrate → done."""
+        monkeypatch.chdir(tmp_path)
+
+        # Step 1 — Configure room for a 3×4 ward
+        r = await client.post("/api/settings/quick", json={
+            "room_width": 3.0, "room_depth": 4.0,
+            "room_height": 2.8, "scene_mode": "safety",
+        })
+        assert r.json()["status"] == "saved"
+
+        # Step 2 — Re-open Quick Setup, verify settings round-tripped
+        g = await client.get("/api/settings/quick")
+        d = g.json()
+        assert d["room_width"] == 3.0
+        assert d["scene_mode"] == "safety"
+
+        # Step 3 — Spatial calibration (nodes already mounted)
+        r = await client.post("/api/calibration/start", params={"mode": "spatial"})
+        assert r.status_code == 200
+
+        # Step 4 — Finish calibration
+        r = await client.post("/api/calibration/finish")
+        assert r.status_code == 200
+
+        # Step 5 — Confirm calibration completed
+        r = await client.get("/api/status")
+        assert r.json()["calibration"]["status"] == "complete"

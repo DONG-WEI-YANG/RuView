@@ -62,6 +62,7 @@ export class WsClient {
       if (d.joints) bus.emit('pose', { joints: d.joints, confidence: 0 });
       if (d.vitals) bus.emit('vitals', d.vitals);
       if (d.csi_amplitudes) bus.emit('csi', { amplitudes: d.csi_amplitudes });
+      if (d.presence) bus.emit('presence', { grid: d.presence });
     }
   }
 

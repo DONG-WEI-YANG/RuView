@@ -15,7 +15,7 @@ from server.protocol.envelope import (
     WelcomeMessage,
 )
 
-ALL_STREAMS = {"pose", "vitals", "csi", "status", "persons"}
+ALL_STREAMS = {"pose", "vitals", "csi", "status", "persons", "presence"}
 V0_DETECT_TIMEOUT_SEC = 5.0
 
 

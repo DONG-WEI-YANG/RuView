@@ -28,8 +28,27 @@ function cacheDom() {
   elHudStressBar  = document.getElementById('hud-stress-bar');
 }
 
+// ── Normalize vitals keys (server snake_case → frontend camelCase) ──
+function norm(data) {
+  return {
+    breathRate:    data.breathRate    ?? data.breathing_bpm ?? 0,
+    breathConf:    data.breathConf    ?? data.breathing_confidence ?? 0,
+    heartRate:     data.heartRate     ?? data.heart_bpm ?? 0,
+    heartConf:     data.heartConf     ?? data.heart_confidence ?? 0,
+    hrvRmssd:      data.hrvRmssd      ?? data.hrv_rmssd ?? 0,
+    hrvSdnn:       data.hrvSdnn       ?? data.hrv_sdnn ?? 0,
+    stressIndex:   data.stressIndex   ?? data.stress_index ?? 0,
+    motionIntensity: data.motionIntensity ?? data.motion_intensity ?? 0,
+    bodyMovement:  data.bodyMovement   ?? data.body_movement ?? 'still',
+    breathRegularity: data.breathRegularity ?? data.breath_regularity ?? 0,
+    sleepStage:    data.sleepStage     ?? data.sleep_stage ?? 'awake',
+  };
+}
+
 // ── Single-person vitals rendering ───────────────────────────────
-function onVitals(data) {
+function onVitals(raw) {
+  const data = norm(raw);
+
   // Breathing
   if (elBreathVal) {
     elBreathVal.textContent = data.breathRate.toFixed(1) + ' BPM';

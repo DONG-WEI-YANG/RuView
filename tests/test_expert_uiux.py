@@ -338,3 +338,93 @@ class TestConnectionStatusUX:
         d = r.json()
         assert "nodes" in d
         assert "grade" in d
+
+
+# ═══════════════════════════════════════════════════════════
+# 9. Quick Setup Panel — designer walksthrough the new wizard
+# ═══════════════════════════════════════════════════════════
+
+class TestQuickSetupPanelUX:
+    """Designer visits the hardware tab's Quick Setup panel (added last sprint).
+    Checks: affordance cues, brand consistency, notification channels, API binding.
+    """
+
+    def test_panel_exists_with_stable_id(self):
+        """Panel ID hw-quick-setup must be stable — JS and CSS reference it."""
+        from pathlib import Path
+        js = Path("dashboard/src/tabs/hardware.js").read_text(encoding="utf-8")
+        assert "hw-quick-setup" in js
+
+    def test_collapsible_toggle_arrow_affordance(self):
+        """▶/▼ toggle arrow gives users a visual cue that the panel expands."""
+        from pathlib import Path
+        js = Path("dashboard/src/tabs/hardware.js").read_text(encoding="utf-8")
+        assert "qs-toggle" in js
+        assert "qs-body" in js  # collapsible section
+
+    def test_scene_mode_buttons_both_present(self):
+        """Two mode buttons with IDs so JS can highlight active state."""
+        from pathlib import Path
+        js = Path("dashboard/src/tabs/hardware.js").read_text(encoding="utf-8")
+        assert "qs-mode-safety" in js
+        assert "qs-mode-fitness" in js
+        assert "active" in js  # CSS class toggled on selection
+
+    def test_save_button_uses_brand_amber(self):
+        """Save & Apply button is amber (#f80) — matches primary brand color."""
+        from pathlib import Path
+        js = Path("dashboard/src/tabs/hardware.js").read_text(encoding="utf-8")
+        assert "Save & Apply" in js
+        assert "#f80" in js
+
+    def test_save_feedback_message_element(self):
+        """qs-save-msg shows 'Saved!' confirmation — user knows action was applied."""
+        from pathlib import Path
+        js = Path("dashboard/src/tabs/hardware.js").read_text(encoding="utf-8")
+        assert "qs-save-msg" in js
+
+    def test_three_notification_channels_present(self):
+        """Webhook, LINE, Telegram — three channels visible in one scroll."""
+        from pathlib import Path
+        js = Path("dashboard/src/tabs/hardware.js").read_text(encoding="utf-8")
+        assert "qs-webhook" in js
+        assert "qs-line" in js
+        assert "qs-tg-token" in js
+        assert "qs-tg-chat" in js
+
+    def test_room_fields_decimal_step(self):
+        """Room dimension inputs use step=0.1 — technician can set 3.5 m."""
+        from pathlib import Path
+        js = Path("dashboard/src/tabs/hardware.js").read_text(encoding="utf-8")
+        assert "step" in js
+        assert "0.1" in js
+
+    def test_setup_panel_loads_from_api(self):
+        """loadQuickSetup() fetches /api/settings/quick — UI mirrors live config."""
+        from pathlib import Path
+        js = Path("dashboard/src/tabs/hardware.js").read_text(encoding="utf-8")
+        assert "loadQuickSetup" in js
+        assert "/api/settings/quick" in js
+
+    def test_setup_panel_saves_to_api(self):
+        """saveQuickSetup() POSTs to /api/settings/quick — round-trip confirmed."""
+        from pathlib import Path
+        js = Path("dashboard/src/tabs/hardware.js").read_text(encoding="utf-8")
+        assert "saveQuickSetup" in js
+
+    @pytest.mark.asyncio
+    async def test_quick_setup_get_has_all_display_fields(self, client):
+        """API response has every field the panel renders."""
+        r = await client.get("/api/settings/quick")
+        assert r.status_code == 200
+        d = r.json()
+        for field in ["room_width", "room_depth", "room_height",
+                      "scene_mode", "profiles", "scene_modes",
+                      "notify_webhook_url", "notify_line_token"]:
+            assert field in d, f"Quick Setup UI missing field: {field}"
+
+    @pytest.mark.asyncio
+    async def test_scene_switch_returns_description_for_tooltip(self, client):
+        """POST scene returns description — designer uses it for button tooltip."""
+        r = await client.post("/api/system/scene", params={"scene": "safety"})
+        assert "description" in r.json()

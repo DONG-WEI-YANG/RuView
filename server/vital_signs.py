@@ -28,8 +28,9 @@ class VitalSignsExtractor:
       → we detect breathing anomalies as a respiratory distress proxy
     """
 
-    def __init__(self, sample_rate: float = 100.0, window_sec: float = 30.0):
+    def __init__(self, sample_rate: float = 100.0, window_sec: float = 30.0, num_subcarriers: int = 56):
         self.fs = sample_rate
+        self.num_subcarriers = num_subcarriers
         self.window_size = int(sample_rate * window_sec)
         self.csi_buffer = []  # rolling buffer of CSI amplitude vectors
         self.breath_rate = 0.0
@@ -49,8 +50,18 @@ class VitalSignsExtractor:
         self.breath_regularity = 0.0  # 0-1 how regular breathing is
 
     def push_csi(self, amplitudes: np.ndarray):
-        """Push one CSI frame (vector of subcarrier amplitudes)."""
-        self.csi_buffer.append(amplitudes.copy())
+        """Push one CSI frame (vector of subcarrier amplitudes).
+
+        Mixed-chip setups (e.g. S3 + C3) produce different-length vectors.
+        Pad or truncate to num_subcarriers so the buffer stays homogeneous.
+        """
+        vec = amplitudes.copy()
+        expected = self.num_subcarriers
+        if len(vec) < expected:
+            vec = np.pad(vec, (0, expected - len(vec)))
+        elif len(vec) > expected:
+            vec = vec[:expected]
+        self.csi_buffer.append(vec)
         if len(self.csi_buffer) > self.window_size:
             self.csi_buffer.pop(0)
 

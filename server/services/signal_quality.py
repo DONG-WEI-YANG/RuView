@@ -111,7 +111,7 @@ class NodeQuality:
 class SignalQualityMonitor:
     """Monitors per-node signal quality and emits dashboard events."""
 
-    def __init__(self, emitter: EventEmitter, emit_interval: float = 2.0):
+    def __init__(self, emitter: EventEmitter, emit_interval: float = 1.0):
         self._emitter = emitter
         self._nodes: dict[int, NodeQuality] = {}
         self._emit_interval = emit_interval

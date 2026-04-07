@@ -72,8 +72,9 @@ class SignalProcessor:
         if fs is None:
             fs = self.settings.csi_sample_rate
 
-        # 1. Fuse frames
-        stacked = np.array([self.fuse_nodes(frame) for frame in window])
+        # 1. Fuse frames (pad to max_nodes so mixed-chip nodes produce uniform width)
+        target = self.settings.max_nodes
+        stacked = np.array([self.fuse_nodes(frame, target_nodes=target) for frame in window])
         
         # 2. Prepare background vector if available
         bg_vector = None

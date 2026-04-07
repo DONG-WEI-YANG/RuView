@@ -58,8 +58,22 @@ function drawWaveform(ctx, w, h, data, color) {
   ctx.globalAlpha = 1.0;
 }
 
+// ── Normalize vitals keys (snake_case → camelCase) ───────────────
+function normV(d) {
+  return {
+    hrvRmssd:      d.hrvRmssd      ?? d.hrv_rmssd ?? 0,
+    hrvSdnn:       d.hrvSdnn       ?? d.hrv_sdnn ?? 0,
+    stressIndex:   d.stressIndex   ?? d.stress_index ?? 0,
+    motionIntensity: d.motionIntensity ?? d.motion_intensity ?? 0,
+    bodyMovement:  d.bodyMovement   ?? d.body_movement ?? 'still',
+    sleepStage:    d.sleepStage     ?? d.sleep_stage ?? 'awake',
+    breathRegularity: d.breathRegularity ?? d.breath_regularity ?? 0,
+  };
+}
+
 // ── Health Metrics (Dashboard panel) ──────────────────────────────
-function renderHealthMetrics(d) {
+function renderHealthMetrics(raw) {
+  const d = normV(raw);
   let el;
 
   // HRV

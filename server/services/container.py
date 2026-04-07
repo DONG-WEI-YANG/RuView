@@ -59,7 +59,7 @@ class ServiceContainer:
         pipeline = _load_pipeline(s)
         # Wire calibration + vitals into pipeline settings
         self.calibration = CalibrationService()
-        self.vitals = VitalsService(sample_rate=s.csi_sample_rate, emitter=self.emitter)
+        self.vitals = VitalsService(sample_rate=s.csi_sample_rate, emitter=self.emitter, num_subcarriers=s.num_subcarriers)
         s.calibration_manager = self.calibration.manager
         s.vitals_extractor = self.vitals.extractor
 
@@ -81,6 +81,7 @@ class ServiceContainer:
         self.emitter.on("vitals", self._on_vitals_for_ws)
         self.emitter.on("csi", self._on_csi_for_ws)
         self.emitter.on("persons", self._on_persons_for_ws)
+        self.emitter.on("presence", self._on_presence_for_ws)
 
     async def _on_pose_for_ws(self, data):
         from server.protocol.envelope import make_envelope, PoseData
@@ -102,6 +103,12 @@ class ServiceContainer:
         persons = [PersonData(**p) for p in data.get("persons", [])]
         env = make_envelope("persons", PersonsData(persons=persons, count=data.get("count", 0)))
         await self.websocket.broadcast_envelope(env)
+
+    async def _on_presence_for_ws(self, data):
+        """Broadcast presence heatmap grid as raw JSON."""
+        import json
+        msg = json.dumps({"presence": data.get("grid", [])})
+        await self.websocket.broadcast_raw(msg)
 
     async def startup(self) -> None:
         logger.info("ServiceContainer starting up")
